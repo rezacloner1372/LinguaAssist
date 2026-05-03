@@ -2,9 +2,9 @@
 
 > A bilingual Persian/English Chrome extension that translates text and fixes grammar using your own LLM — fully private, no data leaves your browser.
 
-<img src="public/icons/demo-LinguaAssist.png" alt="LinguaAssist demo" width="220" />
+<img src="public/icons/demo-LinguaAssist.png" alt="LinguaAssist demo" width="420" />
 
-<img src="public/icons/LinguaAssist.png" alt="LinguaAssist icon" width="110" />
+<img src="public/icons/LinguaAssist.png" alt="LinguaAssist icon" width="310" />
 
 ---
 
