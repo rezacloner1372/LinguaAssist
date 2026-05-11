@@ -27,7 +27,10 @@ export function chunkText(text: string, maxTokensPerChunk = 3000): string[] {
         chunks.push(current.trim());
         current = '';
       }
-      // Single paragraph too long: split by sentences
+      // Single paragraph too long: split by sentences.
+      // The lookbehind includes ؟ (Arabic question mark) for Persian/Farsi content.
+      // Known limitation: may split incorrectly on abbreviations (e.g. "Dr.") or
+      // decimal numbers; sentence chunking is best-effort for context management.
       if (para.length > maxChars) {
         const sentences = para.split(/(?<=[.!?؟])\s+/);
         for (const sentence of sentences) {

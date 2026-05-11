@@ -553,8 +553,8 @@ export function FloatingPanel({
               </div>
             )}
 
-            {chatMessages.map((msg, i) => (
-              <ChatBubble key={i} message={msg} fontStack={fontStack} />
+            {chatMessages.map((msg) => (
+              <ChatBubble key={`${msg.role}-${msg.timestamp}`} message={msg} fontStack={fontStack} />
             ))}
 
             {/* Streaming assistant bubble */}
@@ -584,11 +584,11 @@ export function FloatingPanel({
                     </div>
                   ) : (
                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center', padding: '2px 0' }}>
-                      {[0, 1, 2].map(i => (
-                        <span key={i} style={{
+                      {[0, 1, 2].map((dotIdx) => (
+                        <span key={`dot-${dotIdx}`} style={{
                           width: '6px', height: '6px', borderRadius: '50%',
                           background: '#5C6BC0',
-                          animation: `linguaPulse 1.2s ease-in-out ${i * 0.2}s infinite`,
+                          animation: `linguaPulse 1.2s ease-in-out ${dotIdx * 0.2}s infinite`,
                           display: 'inline-block',
                         }} />
                       ))}

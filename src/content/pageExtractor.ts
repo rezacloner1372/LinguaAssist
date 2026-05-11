@@ -1,4 +1,5 @@
 import type { PageContent } from '../shared/types';
+import { estimateTokens } from './tokenUtils';
 
 const SKIP_TAGS = new Set([
   'script', 'style', 'noscript', 'iframe', 'svg', 'canvas',
@@ -113,7 +114,7 @@ export function extractPageContent(): PageContent {
     .trim();
 
   const wordCount = rawText.split(/\s+/).filter(Boolean).length;
-  const estimatedTokens = Math.ceil(rawText.length / 4);
+  const estimatedTokens = estimateTokens(rawText);
 
   return {
     title,
