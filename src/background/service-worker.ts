@@ -1,7 +1,23 @@
 import { getSettings } from '../shared/storage';
-import type { MessageToBackground, MessageToBackgroundHealthCheck, MessageResponse, LLMSettings } from '../shared/types';
+import type {
+  MessageToBackground,
+  MessageToBackgroundHealthCheck,
+  MessageToBackgroundPageSummarize,
+  MessageResponse,
+  LLMSettings,
+  PageChatRequest,
+  ChatMessage,
+} from '../shared/types';
+import { truncateToTokens } from '../content/tokenUtils';
 
-type IncomingMessage = MessageToBackground | MessageToBackgroundHealthCheck;
+type IncomingMessage =
+  | MessageToBackground
+  | MessageToBackgroundHealthCheck
+  | MessageToBackgroundPageSummarize;
+
+const DEFAULT_MAX_CONTEXT_TOKENS = 8000;
+const SUMMARY_MAX_TOKENS = 1500;
+const CHAT_REPLY_MAX_TOKENS = 1000;
 
 function getSystemPrompt(action: string): string {
   switch (action) {
@@ -16,7 +32,48 @@ function getSystemPrompt(action: string): string {
   }
 }
 
-async function callLLM(settings: LLMSettings, systemPrompt: string, userText: string, maxTokens = 1000): Promise<string> {
+function getSummarizeSystemPrompt(): string {
+  return `You are an expert content analyst. Analyze the provided webpage content and produce a structured response in markdown with these three sections:
+
+**Summary**
+A concise 2–4 sentence overview of the main content.
+
+**Key Points**
+3–7 bullet points covering the most important information.
+
+**Action Items** *(include only if the content contains specific steps or recommendations)*
+Bullet points of actionable steps mentioned in the content.
+
+Be concise but comprehensive. Respond in markdown only.`;
+}
+
+function buildChatSystemPrompt(
+  title: string,
+  url: string,
+  content: string,
+  maxContextTokens: number,
+): string {
+  const headerTokens = 200;
+  const contentBudget = maxContextTokens - headerTokens;
+  const truncatedContent = truncateToTokens(content, contentBudget);
+
+  return `You are an intelligent assistant analyzing a webpage for the user.
+
+PAGE TITLE: ${title}
+PAGE URL: ${url}
+
+PAGE CONTENT:
+${truncatedContent}
+
+Answer questions about this content accurately and helpfully. If the user asks to translate, summarize, or explain something specific from the page, do so. If information is not in the provided content, clearly say so. Respond in markdown when it improves readability.`;
+}
+
+async function callLLM(
+  settings: LLMSettings,
+  systemPrompt: string,
+  userText: string,
+  maxTokens = 1000,
+): Promise<string> {
   const url = settings.baseUrl.replace(/\/$/, '') + '/chat/completions';
   const response = await fetch(url, {
     method: 'POST',
@@ -30,7 +87,7 @@ async function callLLM(settings: LLMSettings, systemPrompt: string, userText: st
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userText },
       ],
-      temperature: 0,
+      temperature: settings.temperature ?? 0,
       max_tokens: maxTokens,
     }),
   });
@@ -46,6 +103,116 @@ async function callLLM(settings: LLMSettings, systemPrompt: string, userText: st
   return content.trim();
 }
 
+async function callLLMWithHistory(
+  settings: LLMSettings,
+  systemPrompt: string,
+  history: ChatMessage[],
+  userMessage: string,
+  maxTokens = 1000,
+): Promise<string> {
+  const url = settings.baseUrl.replace(/\/$/, '') + '/chat/completions';
+
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...history.map((m) => ({ role: m.role, content: m.content })),
+    { role: 'user', content: userMessage },
+  ];
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${settings.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: settings.model,
+      messages,
+      temperature: settings.temperature ?? 0.3,
+      max_tokens: maxTokens,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`HTTP ${response.status}: ${errorText}`);
+  }
+
+  const data = await response.json();
+  const content = data?.choices?.[0]?.message?.content;
+  if (!content) throw new Error('Empty response from LLM');
+  return content.trim();
+}
+
+async function streamLLMWithHistory(
+  settings: LLMSettings,
+  systemPrompt: string,
+  history: ChatMessage[],
+  userMessage: string,
+  maxTokens: number,
+  port: chrome.runtime.Port,
+): Promise<void> {
+  const url = settings.baseUrl.replace(/\/$/, '') + '/chat/completions';
+
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...history.map((m) => ({ role: m.role, content: m.content })),
+    { role: 'user', content: userMessage },
+  ];
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${settings.apiKey}`,
+    },
+    body: JSON.stringify({
+      model: settings.model,
+      messages,
+      temperature: settings.temperature ?? 0.3,
+      max_tokens: maxTokens,
+      stream: true,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`HTTP ${response.status}: ${errorText}`);
+  }
+
+  if (!response.body) throw new Error('No response body for streaming');
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('data:')) continue;
+      const jsonStr = trimmed.slice(5).trim();
+      if (jsonStr === '[DONE]') continue;
+      try {
+        const parsed = JSON.parse(jsonStr);
+        const chunk = parsed?.choices?.[0]?.delta?.content;
+        if (chunk) port.postMessage({ type: 'CHUNK', content: chunk });
+      } catch {
+        // malformed SSE line — skip
+      }
+    }
+  }
+
+  port.postMessage({ type: 'DONE' });
+}
+
+// Standard request/response messages
 chrome.runtime.onMessage.addListener(
   (message: IncomingMessage, _sender, sendResponse: (response: MessageResponse) => void) => {
     if (message.type === 'LLM_REQUEST') {
@@ -75,5 +242,82 @@ chrome.runtime.onMessage.addListener(
         });
       return true;
     }
-  }
+
+    if (message.type === 'PAGE_SUMMARIZE') {
+      const { pageContent } = message.payload;
+      getSettings().then((settings) => {
+        if (!settings.baseUrl || !settings.model) {
+          sendResponse({ success: false, error: 'LLM not configured. Please open Settings.' });
+          return;
+        }
+        const maxContext = settings.maxContextTokens ?? DEFAULT_MAX_CONTEXT_TOKENS;
+        const truncated = truncateToTokens(pageContent.content, maxContext - 500);
+        const systemPrompt = getSummarizeSystemPrompt();
+        callLLM(settings, systemPrompt, `Title: ${pageContent.title}\n\n${truncated}`, SUMMARY_MAX_TOKENS)
+          .then((result) => sendResponse({ success: true, data: result }))
+          .catch((err) => sendResponse({ success: false, error: err.message }));
+      });
+      return true;
+    }
+  },
 );
+
+// Streaming port for chat
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'lingua-stream') return;
+
+  port.onMessage.addListener(async (msg) => {
+    if (msg.type !== 'PAGE_CHAT') return;
+
+    const payload = msg.payload as PageChatRequest;
+    const { pageContent, conversationHistory, userMessage } = payload;
+
+    const settings = await getSettings();
+    if (!settings.baseUrl || !settings.model) {
+      port.postMessage({ type: 'ERROR', error: 'LLM not configured. Please open Settings.' });
+      return;
+    }
+
+    const maxContext = settings.maxContextTokens ?? DEFAULT_MAX_CONTEXT_TOKENS;
+    // Reserve tokens for conversation history and the reply
+    const historyTokens = conversationHistory.reduce(
+      (sum, m) => sum + Math.ceil(m.content.length / 4),
+      0,
+    );
+    const contentBudget = Math.max(1000, maxContext - historyTokens - CHAT_REPLY_MAX_TOKENS - 200);
+
+    const systemPrompt = buildChatSystemPrompt(
+      pageContent.title,
+      pageContent.url,
+      pageContent.content,
+      contentBudget,
+    );
+
+    try {
+      await streamLLMWithHistory(
+        settings,
+        systemPrompt,
+        conversationHistory,
+        userMessage,
+        CHAT_REPLY_MAX_TOKENS,
+        port,
+      );
+    } catch (err) {
+      // Fallback to non-streaming if streaming fails
+      try {
+        const result = await callLLMWithHistory(
+          settings,
+          systemPrompt,
+          conversationHistory,
+          userMessage,
+          CHAT_REPLY_MAX_TOKENS,
+        );
+        port.postMessage({ type: 'CHUNK', content: result });
+        port.postMessage({ type: 'DONE' });
+      } catch (fallbackErr: unknown) {
+        const message = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+        port.postMessage({ type: 'ERROR', error: message });
+      }
+    }
+  });
+});
