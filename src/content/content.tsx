@@ -181,9 +181,12 @@ function createPageFab() {
   pageFab.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
-    // Open panel in page-only mode: no selected text, centered
-    const cx = Math.min(window.innerWidth - 200, Math.max(200, window.innerWidth * 0.72));
-    const cy = Math.min(window.innerHeight - 300, 120);
+    // Position the panel near the top-right area of the viewport (below toolbar)
+    const PANEL_WIDTH_ESTIMATE = 360;
+    const MIN_EDGE_MARGIN = 24;
+    const PREFERRED_TOP_OFFSET = 80;
+    const cx = Math.max(MIN_EDGE_MARGIN, window.innerWidth - PANEL_WIDTH_ESTIMATE - MIN_EDGE_MARGIN);
+    const cy = PREFERRED_TOP_OFFSET;
     openPanel('', cx, cy);
   });
 

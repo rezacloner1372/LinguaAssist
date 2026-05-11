@@ -18,6 +18,8 @@ type IncomingMessage =
 const DEFAULT_MAX_CONTEXT_TOKENS = 8000;
 const SUMMARY_MAX_TOKENS = 1500;
 const CHAT_REPLY_MAX_TOKENS = 1000;
+// Token budget reserved for system prompt metadata (title, URL, instruction overhead)
+const SYSTEM_PROMPT_OVERHEAD_TOKENS = 200;
 
 function getSystemPrompt(action: string): string {
   switch (action) {
@@ -53,8 +55,7 @@ function buildChatSystemPrompt(
   content: string,
   maxContextTokens: number,
 ): string {
-  const headerTokens = 200;
-  const contentBudget = maxContextTokens - headerTokens;
+  const contentBudget = maxContextTokens - SYSTEM_PROMPT_OVERHEAD_TOKENS;
   const truncatedContent = truncateToTokens(content, contentBudget);
 
   return `You are an intelligent assistant analyzing a webpage for the user.
@@ -284,7 +285,7 @@ chrome.runtime.onConnect.addListener((port) => {
       (sum, m) => sum + Math.ceil(m.content.length / 4),
       0,
     );
-    const contentBudget = Math.max(1000, maxContext - historyTokens - CHAT_REPLY_MAX_TOKENS - 200);
+    const contentBudget = Math.max(1000, maxContext - historyTokens - CHAT_REPLY_MAX_TOKENS - SYSTEM_PROMPT_OVERHEAD_TOKENS);
 
     const systemPrompt = buildChatSystemPrompt(
       pageContent.title,

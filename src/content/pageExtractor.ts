@@ -1,11 +1,4 @@
-export interface PageContent {
-  title: string;
-  content: string;
-  wordCount: number;
-  estimatedTokens: number;
-  url: string;
-  extractedAt: number;
-}
+import type { PageContent } from '../shared/types';
 
 const SKIP_TAGS = new Set([
   'script', 'style', 'noscript', 'iframe', 'svg', 'canvas',

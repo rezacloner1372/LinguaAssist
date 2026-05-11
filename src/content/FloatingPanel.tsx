@@ -25,16 +25,22 @@ const TEXT_ACTIONS: { key: Action; label: string; icon: string }[] = [
 const fontStack = "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif";
 
 // ─── Simple inline markdown renderer ────────────────────────────────────────
+// Panel sizing constants
+const PANEL_WIDTH_NORMAL = 360;
+const PANEL_WIDTH_CHAT = 400;
+const PANEL_MAX_HEIGHT_NORMAL = 560;
+const PANEL_MAX_HEIGHT_CHAT = 600;
+
 function renderMarkdown(text: string): React.ReactNode {
   const lines = text.split('\n');
   const nodes: React.ReactNode[] = [];
   let listItems: React.ReactNode[] = [];
-  let key = 0;
+  let lineIdx = 0;
 
   function flushList() {
     if (listItems.length > 0) {
       nodes.push(
-        <ul key={key++} style={{ margin: '4px 0 8px 0', paddingLeft: '18px' }}>
+        <ul key={`ul-${lineIdx}`} style={{ margin: '4px 0 8px 0', paddingLeft: '18px' }}>
           {listItems}
         </ul>
       );
@@ -42,58 +48,59 @@ function renderMarkdown(text: string): React.ReactNode {
     }
   }
 
-  function processInline(str: string): React.ReactNode[] {
+  function processInline(str: string, lineKey: string): React.ReactNode[] {
     const parts: React.ReactNode[] = [];
     const pattern = /(\*\*(.*?)\*\*|`(.*?)`)/g;
     let last = 0;
+    let matchIdx = 0;
     let m: RegExpExecArray | null;
-    let idx = 0;
     while ((m = pattern.exec(str)) !== null) {
-      if (m.index > last) parts.push(<span key={idx++}>{str.slice(last, m.index)}</span>);
+      if (m.index > last) parts.push(<span key={`${lineKey}-t${matchIdx++}`}>{str.slice(last, m.index)}</span>);
       if (m[2] !== undefined) {
-        parts.push(<strong key={idx++}>{m[2]}</strong>);
+        parts.push(<strong key={`${lineKey}-b${matchIdx++}`}>{m[2]}</strong>);
       } else if (m[3] !== undefined) {
         parts.push(
-          <code key={idx++} style={{ background: '#EEF0FF', padding: '1px 5px', borderRadius: '4px', fontSize: '12px', fontFamily: 'monospace' }}>
+          <code key={`${lineKey}-c${matchIdx++}`} style={{ background: '#EEF0FF', padding: '1px 5px', borderRadius: '4px', fontSize: '12px', fontFamily: 'monospace' }}>
             {m[3]}
           </code>
         );
       }
       last = m.index + m[0].length;
     }
-    if (last < str.length) parts.push(<span key={idx++}>{str.slice(last)}</span>);
+    if (last < str.length) parts.push(<span key={`${lineKey}-t${matchIdx}`}>{str.slice(last)}</span>);
     return parts;
   }
 
   for (const line of lines) {
+    const lineKey = `l${lineIdx}`;
     if (/^#{1,3}\s/.test(line)) {
       flushList();
       const content = line.replace(/^#+\s/, '');
       nodes.push(
-        <div key={key++} style={{ fontWeight: 700, fontSize: '13px', color: '#3F51B5', margin: '10px 0 4px' }}>
-          {processInline(content)}
+        <div key={lineKey} style={{ fontWeight: 700, fontSize: '13px', color: '#3F51B5', margin: '10px 0 4px' }}>
+          {processInline(content, lineKey)}
         </div>
       );
     } else if (/^[-*•]\s/.test(line)) {
       const content = line.replace(/^[-*•]\s/, '');
-      listItems.push(<li key={key++} style={{ marginBottom: '2px', lineHeight: '1.5' }}>{processInline(content)}</li>);
+      listItems.push(<li key={lineKey} style={{ marginBottom: '2px', lineHeight: '1.5' }}>{processInline(content, lineKey)}</li>);
     } else if (line.trim() === '') {
       flushList();
-      nodes.push(<div key={key++} style={{ height: '4px' }} />);
+      nodes.push(<div key={lineKey} style={{ height: '4px' }} />);
     } else {
       flushList();
       nodes.push(
-        <p key={key++} style={{ margin: '0 0 6px', lineHeight: '1.6' }}>
-          {processInline(line)}
+        <p key={lineKey} style={{ margin: '0 0 6px', lineHeight: '1.6' }}>
+          {processInline(line, lineKey)}
         </p>
       );
     }
+    lineIdx++;
   }
   flushList();
   return <>{nodes}</>;
 }
 
-// ─── Main component ──────────────────────────────────────────────────────────
 export function FloatingPanel({
   selectedText,
   anchorX,
@@ -149,14 +156,14 @@ export function FloatingPanel({
   }, [chatOpen]);
 
   // ── Panel dimensions ──
-  const panelWidth = chatOpen ? 400 : 360;
+  const panelWidth = chatOpen ? PANEL_WIDTH_CHAT : PANEL_WIDTH_NORMAL;
   const padding = 12;
 
   let left = anchorX + 8;
   let top = anchorY + 8;
   if (left + panelWidth > window.innerWidth - padding) left = window.innerWidth - panelWidth - padding;
   if (left < padding) left = padding;
-  const estimatedHeight = chatOpen ? 580 : activeView === 'page' ? 500 : 460;
+  const estimatedHeight = chatOpen ? PANEL_MAX_HEIGHT_CHAT : activeView === 'page' ? 500 : 460;
   if (top + estimatedHeight > window.innerHeight - padding) top = Math.max(padding, anchorY - estimatedHeight - 8);
   if (top < padding) top = padding;
 
@@ -366,7 +373,7 @@ export function FloatingPanel({
         left: `${left}px`,
         top: `${top}px`,
         width: `${panelWidth}px`,
-        maxHeight: `${chatOpen ? 600 : 560}px`,
+        maxHeight: `${chatOpen ? PANEL_MAX_HEIGHT_CHAT : PANEL_MAX_HEIGHT_NORMAL}px`,
         background: '#FFFFFF',
         borderRadius: '16px',
         boxShadow: '0 8px 32px rgba(0,0,0,0.14), 0 2px 8px rgba(0,0,0,0.08)',
