@@ -1,11 +1,16 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { FloatingPanel } from './FloatingPanel';
+import type { PageContent } from '../shared/types';
 
 let shadowHost: HTMLElement | null = null;
 let panelRoot: ReturnType<typeof createRoot> | null = null;
 let triggerBtn: HTMLElement | null = null;
 let triggerTimeout: ReturnType<typeof setTimeout> | null = null;
+let pageFab: HTMLElement | null = null;
+
+// Module-level cache — persists for the lifetime of the page
+let cachedPageContent: PageContent | null = null;
 
 function removeTrigger() {
   if (triggerBtn && triggerBtn.parentNode) {
@@ -20,11 +25,21 @@ function removePanel() {
   }
   shadowHost = null;
   panelRoot = null;
+  showPageFab();
+}
+
+function hidePageFab() {
+  if (pageFab) pageFab.style.display = 'none';
+}
+
+function showPageFab() {
+  if (pageFab) pageFab.style.display = 'flex';
 }
 
 function openPanel(text: string, x: number, y: number) {
   removeTrigger();
   removePanel();
+  hidePageFab();
 
   shadowHost = document.createElement('div');
   shadowHost.id = 'lingua-assist-root';
@@ -51,6 +66,8 @@ function openPanel(text: string, x: number, y: number) {
       anchorX={x}
       anchorY={y}
       onClose={removePanel}
+      cachedPageContent={cachedPageContent}
+      onPageContentExtracted={(content) => { cachedPageContent = content; }}
     />
   );
 }
@@ -114,10 +131,73 @@ function showTrigger(text: string, rect: DOMRect) {
   document.body.appendChild(triggerBtn);
 }
 
+function createPageFab() {
+  if (pageFab) return;
+
+  pageFab = document.createElement('button');
+  pageFab.id = 'lingua-assist-page-fab';
+  pageFab.style.cssText = `
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    z-index: 2147483645;
+    background: #5C6BC0;
+    color: white;
+    border: none;
+    border-radius: 24px;
+    padding: 8px 14px;
+    font-size: 12px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 16px rgba(92,107,192,0.45);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    pointer-events: all;
+    transition: all 0.18s ease;
+    letter-spacing: 0.02em;
+    opacity: 0.88;
+  `;
+  pageFab.innerHTML = '✦ Page';
+  pageFab.title = 'Open LinguaAssist page intelligence';
+
+  pageFab.addEventListener('mouseenter', () => {
+    if (pageFab) {
+      pageFab.style.background = '#3F51B5';
+      pageFab.style.opacity = '1';
+      pageFab.style.transform = 'scale(1.05)';
+    }
+  });
+  pageFab.addEventListener('mouseleave', () => {
+    if (pageFab) {
+      pageFab.style.background = '#5C6BC0';
+      pageFab.style.opacity = '0.88';
+      pageFab.style.transform = 'scale(1)';
+    }
+  });
+
+  pageFab.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Position the panel near the top-right area of the viewport (below toolbar)
+    const PANEL_WIDTH_ESTIMATE = 360;
+    const MIN_EDGE_MARGIN = 24;
+    const PREFERRED_TOP_OFFSET = 80;
+    const cx = Math.max(MIN_EDGE_MARGIN, window.innerWidth - PANEL_WIDTH_ESTIMATE - MIN_EDGE_MARGIN);
+    const cy = PREFERRED_TOP_OFFSET;
+    openPanel('', cx, cy);
+  });
+
+  document.body.appendChild(pageFab);
+}
+
 document.addEventListener('mouseup', (e) => {
   const target = e.target as HTMLElement;
   if (
     target?.id === 'lingua-assist-trigger' ||
+    target?.id === 'lingua-assist-page-fab' ||
     target?.closest?.('#lingua-assist-root') ||
     target?.closest?.('#lingua-assist-trigger')
   ) {
@@ -143,6 +223,7 @@ document.addEventListener('mousedown', (e) => {
   const target = e.target as HTMLElement;
   if (
     target?.id === 'lingua-assist-trigger' ||
+    target?.id === 'lingua-assist-page-fab' ||
     target?.closest?.('#lingua-assist-root')
   ) {
     return;
@@ -156,3 +237,6 @@ document.addEventListener('keydown', (e) => {
     removePanel();
   }
 });
+
+// Initialize the persistent FAB
+createPageFab();
