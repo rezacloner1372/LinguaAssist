@@ -6,6 +6,10 @@
 
 <img src="public/icons/LinguaAssist.png" alt="LinguaAssist icon" width="310" />
 
+<img src="public/icons/chat.png" alt="LinguaAssist icon" width="310" />
+
+<img src="public/icons/summary.png" alt="LinguaAssist icon" width="310" />
+
 ---
 
 ## Table of Contents
