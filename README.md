@@ -1,256 +1,152 @@
-# LinguaAssist
+<div align="center">
 
-> A bilingual Persian/English Chrome extension that translates selected text, reads webpages, summarizes them, and lets you chat with page content using your own LLM.
+# ✦ LinguaAssist
 
-<img src="public/icons/demo-LinguaAssist.png" alt="LinguaAssist demo" width="420" />
+**A bilingual Persian ⇄ English AI companion for the browser.**
 
-<img src="public/icons/LinguaAssist.png" alt="LinguaAssist icon" width="310" />
+Translate, explain, and rewrite selected text; summarize and chat with entire pages —
+powered by your own OpenAI-compatible LLM endpoint.
 
-<img src="public/icons/chat.png" alt="LinguaAssist icon" width="310" />
+[![Version](https://img.shields.io/badge/version-1.1.0-5C6BC0.svg)](https://github.com/rezacloner1372/LinguaAssist)
+[![Chrome](https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4.svg)](https://developer.chrome.com/docs/extensions/develop)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-<img src="public/icons/summary.png" alt="LinguaAssist icon" width="310" />
+</div>
 
 ---
 
-## Table of Contents
+## Screenshots
 
-- [Features](#features)
-- [What’s New in Page Intelligence](#whats-new-in-page-intelligence)
-- [How It Works](#how-it-works)
-- [Prerequisites](#prerequisites)
-- [Getting Started (Development)](#getting-started-development)
-- [Building for Production](#building-for-production)
-- [Loading the Extension in Chrome](#loading-the-extension-in-chrome)
-- [Configuring Your LLM](#configuring-your-llm)
-- [Using the Extension](#using-the-extension)
-- [Project Structure](#project-structure)
-- [Privacy](#privacy)
+| | |
+|:---:|:---:|
+| ![Panel](public/icons/LinguaAssist.png) | ![Chat with Page](public/icons/chat.png) |
+| **Floating panel & text actions** | **Chat with Page** |
+| ![Summary](public/icons/summary.png) | ![Demo](public/icons/demo-LinguaAssist.png) |
+| **Structured page summary** | **Demo** |
 
 ---
 
 ## Features
 
-- 🔄 **Translate ⇄** — Auto-detects direction: Persian → English or English → Persian, with a prompt tuned for natural, native-quality output
-- ⌨️ **Manual Translate** — Type or paste any word, sentence, or paragraph into the panel and translate it — no page selection needed
-- 💡 **Explain** — Clear, concise explanations of selected text with key-term glosses
-- 📋 **Summarize** — Condense selected text into 2–4 bullet points
-- ✏️ **Fix Grammar / Formal / Casual / Draft Reply** — Editing and tone tools that keep the original language
-- 📄 **Read Page** — Extract the main readable content from the current webpage
-- 🧾 **Summarize Page** — Structured markdown summary with key points and action items when relevant
-- 💬 **Chat with Page** — Ask follow-up questions about the current webpage with streaming responses
-- 🖐 **Draggable panel** — Click and hold the header to move the panel anywhere; it stays where you drop it until you close it
-- 🔊 **Listen (TTS)** — Hear any result read aloud, with automatic Persian/English voice selection
-- 📚 **Vocabulary** — Save translations from the panel and review, search, or export them as CSV
-- ↕️ **RTL-aware rendering** — Persian results automatically display right-to-left
-- 🧠 **Page-aware context handling** — Estimates tokens, truncates oversized content, and reserves budget for chat history and replies
-- 🚀 **Persistent page FAB** — Open page intelligence from any tab even when no text is selected
-- ⚡ Works with any **OpenAI-compatible** API endpoint (OpenAI, Ollama, Together.ai, Groq, and more)
-- 🔒 **Private by design** — content is sent only when you trigger an action; your API key stays in Chrome extension storage
+### Text tools (on any selection)
 
----
-
-## What’s New in Page Intelligence
-
-PR [#3](https://github.com/rezacloner1372/LinguaAssist/pull/3) added a new **Page Intelligence** workflow to LinguaAssist.
-
-It introduces:
-
-- A new **Page Intel** tab in the floating panel
-- A persistent **✦ Page** floating action button for opening page tools without selecting text
-- Smart webpage extraction that skips common non-content areas like navbars, sidebars, footers, ads, popups, and similar noise
-- **Structured page summaries** generated through your configured LLM
-- **Chat with Page** with streaming responses and automatic fallback to non-streaming mode if needed
-- Shared token utilities for estimating size, chunking large content, and truncating to fit context windows
-- Configurable `maxContextTokens` and `temperature` support in the extension settings/backend request flow
-
----
-
-## How It Works
-
-### Text actions
-
-1. You select text on any webpage.
-2. A floating **✦ LinguaAssist** panel appears near your selection.
-3. In the **Text Actions** tab, pick one of the actions:
-   - **Translate ⇄** (auto-detects direction)
-   - **Explain**
-   - **Summarize**
-   - **Fix Grammar**
-   - **Formal** / **Casual** rewrites
-   - **Draft Reply**
-4. The extension streams the request to your configured LLM endpoint and the result appears progressively in the panel.
-5. Copy the result, listen to it with 🔊, or save translations to your vocabulary with 📚.
+- 🔄 **Translate ⇄** — auto-detects direction between Persian and English, tuned for natural, native-quality output
+- 💡 **Explain** — concise explanations with key-term glosses
+- 📋 **Summarize** — condenses the selection into 2–4 bullet points
+- ✏️ **Fix Grammar / Formal / Casual / Draft Reply** — editing and tone tools that keep the original language
 
 ### Manual translate
 
-1. Open the panel (select text or click the **✦ Page** button) and switch to the **⌨️ Translate** tab.
-2. Type or paste any word, sentence, or paragraph — the input box detects direction (RTL/LTR) automatically.
-3. Click **🔄 Translate ⇄** (or press **⌘/Ctrl + Enter**). The result uses the same translation system and streaming format as the Text Actions tab.
+- ⌨️ Type or paste any word, sentence, or paragraph in the **Translate** tab — no selection needed — with automatic RTL/LTR detection and ⌘/Ctrl+Enter to submit
 
-### Page Intelligence
+### Page intelligence
 
-1. Click the persistent **✦ Page** button or open the panel and switch to **Page Intel**.
-2. Click **Read Page** to extract the main content of the current webpage.
-3. Choose one of the page actions:
-   - **Summarize** to get a structured markdown summary
-   - **Chat with Page** to ask questions about the page content
-4. LinguaAssist sends the extracted page content to your configured LLM only when you explicitly use these actions.
-5. Chat responses stream into the panel in real time when supported by your provider.
+- 📄 **Read Page** — extracts the main readable content, skipping navbars, sidebars, footers, ads, and popups
+- 🧾 **Summarize Page** — structured markdown summary with key points and action items
+- 💬 **Chat with Page** — streaming Q&A grounded in the extracted content, with automatic non-streaming fallback
 
----
+### Everywhere
 
-## Prerequisites
-
-| Tool | Minimum Version |
-|------|----------------|
-| [Node.js](https://nodejs.org/) | 18+ |
-| [npm](https://www.npmjs.com/) | 9+ |
-| Google Chrome | 114+ (Manifest V3 support) |
-
-An OpenAI-compatible LLM endpoint is also required (see [Configuring Your LLM](#configuring-your-llm)).
+- 🖐 **Draggable panel** — grab the header and move it anywhere; it stays put until closed
+- 🔊 **Listen (TTS)** — results read aloud with automatic Persian/English voice selection
+- 📚 **Vocabulary** — save translations; review, search, and export as CSV from Settings
+- ↕️ **RTL-aware rendering** — Persian text displays correctly throughout
+- 🧠 **Context-aware** — token estimation, chunking, and truncation respect your model's context window
+- ⚡ **Provider-agnostic** — works with any OpenAI-compatible endpoint: OpenAI, Ollama, Together.ai, Groq, and more
+- 🔒 **Private by design** — content leaves your browser only when you trigger an action, always going directly to your endpoint
 
 ---
 
-## Getting Started (Development)
+## Installation
+
+### From source (development)
+
+**Prerequisites:** Node.js 18+, npm 9+, Google Chrome 114+.
 
 ```bash
-# 1. Clone the repository
 git clone https://github.com/rezacloner1372/LinguaAssist.git
 cd LinguaAssist
-
-# 2. Install dependencies
 npm install
-
-# 3. Start the development build (watch mode — rebuilds on every file save)
-npm run dev
+npm run build          # or: npm run dev  (watch mode)
 ```
 
-The compiled extension is written to the **`dist/`** folder.  
-Leave the `npm run dev` terminal running while you develop — any saved change will automatically trigger a rebuild.
+Then load it in Chrome:
 
-> **TypeScript type checking** (without emitting files):
-> ```bash
-> npm run type-check
-> ```
+1. Open `chrome://extensions`.
+2. Enable **Developer mode** (top-right toggle).
+3. Click **Load unpacked** and select the `dist/` folder.
+
+> After each rebuild during development, click the 🔄 refresh icon on the extension card, and reload any open tabs so content scripts update.
 
 ---
 
-## Building for Production
+## Configuration
 
-```bash
-npm run build
-```
+Click the **✦ LinguaAssist** toolbar icon → **⚙ Configure Settings** (or right-click → *Options*).
 
-This runs Webpack in production mode (minified output) and writes the final extension to **`dist/`**.
+| Field | Example | Notes |
+|-------|---------|-------|
+| **Base URL** | `https://api.openai.com/v1` | Must be the OpenAI-compatible root, including `/v1` |
+| **Model** | `gpt-4o-mini` | Any model your endpoint serves |
+| **API Key** | `sk-...` | Stored only in `chrome.storage.local` |
 
----
+Click **⚡ Check Connection** to verify the endpoint before use.
 
-## Loading the Extension in Chrome
+### Optional settings
 
-After building (`npm run dev` or `npm run build`), load the extension as an unpacked extension:
+| Setting | Default | Purpose |
+|---------|---------|---------|
+| `maxContextTokens` | 8000 | Caps page content sent in summarize/chat requests |
+| `temperature` | 0.1 (text) / 0.3 (chat) | Generation randomness |
+| Language A / B | `fa` / `en` | Translation pair; direction auto-detected |
+| TTS toggle | on | Show/hide 🔊 Listen buttons |
 
-1. Open Chrome and navigate to **`chrome://extensions`**.
-2. Enable **Developer mode** (toggle in the top-right corner).
-3. Click **"Load unpacked"**.
-4. Select the **`dist/`** folder inside this repository.
-5. The **✦ LinguaAssist** icon will appear in your Chrome toolbar.
+### Provider examples
 
-> **After every rebuild in development**, click the 🔄 refresh icon on the extension card in `chrome://extensions` to pick up the latest changes. Content scripts on already-open tabs also need to be refreshed.
+**OpenAI**
 
----
-
-## Configuring Your LLM
-
-Before using the extension you must point it at an LLM endpoint:
-
-1. Click the **✦ LinguaAssist** toolbar icon.
-2. Click **"⚙ Configure Settings"** (or right-click the icon → *Options*).
-3. Fill in the required fields:
-
-   | Field | Example |
-   |-------|---------|
-   | **Base URL** | `https://api.openai.com/v1` |
-   | **Model** | `gpt-4o-mini` |
-   | **API Key** | `sk-...` |
-
-4. Save your settings.
-5. Click **"⚡ Check Connection"** to verify the endpoint is reachable.
-
-### Optional advanced behavior
-
-- **`maxContextTokens`** — limits how much page content is included in summarize/chat requests
-- **`temperature`** — controls generation randomness for supported providers
-- **Language A / Language B** — the translation pair (defaults to Persian ⇄ English); translation auto-detects direction between them
-- **TTS toggle** — show or hide 🔊 Listen buttons on results
-
-If these values are not configured, LinguaAssist falls back to built-in defaults.
-
-### Local LLM with Ollama
-
-```
-Base URL : http://localhost:11434/v1
-Model    : llama3.2        (or any model you have pulled)
-API Key  : ollama          (any non-empty string)
-```
-
-Start Ollama before using the extension:
-```bash
-ollama serve
-```
-
-### OpenAI
-
-```
+```text
 Base URL : https://api.openai.com/v1
 Model    : gpt-4o-mini
 API Key  : <your OpenAI API key>
 ```
 
+**Ollama (local)**
+
+```text
+Base URL : http://localhost:11434/v1
+Model    : llama3.2        (or any pulled model)
+API Key  : ollama          (any non-empty string)
+```
+
+Start Ollama first: `ollama serve`
+
 ---
 
-## Using the Extension
+## Usage
 
-### Text Actions
+### Text actions
 
-1. Navigate to any webpage.
-2. **Select** a piece of text with your mouse.
-3. A floating **✦ LinguaAssist** panel appears automatically.
-4. Use the **Text Actions** tab to choose:
-   - **Translate ⇄** (auto-detects Persian ⇄ English)
-   - **Explain**
-   - **Summarize**
-   - **Fix Grammar**
-   - **Formal** / **Casual**
-   - **Draft Reply**
-5. Wait for the streaming result to finish in the panel.
-6. Click **"⎘ Copy Result"** to copy it, 🔊 to listen, or **📚 Save** (translations) to add it to your vocabulary.
-7. Press **Esc** or click **×** to dismiss the panel.
+1. Select text on any webpage — the floating panel appears near your selection.
+2. Pick an action: **Translate ⇄**, **Explain**, **Summarize**, **Fix Grammar**, **Formal**, **Casual**, or **Draft Reply**.
+3. The result streams in progressively. Copy it with **⎘ Copy Result**, listen with 🔊, or save translations with **📚 Save**.
+4. Close with **Esc** or **×**.
+
+### Manual translate
+
+1. Open the panel (text selection or the persistent **✦ Page** button) and switch to the **⌨️ Translate** tab.
+2. Type or paste text, then click **🔄 Translate ⇄** or press **⌘/Ctrl + Enter**.
+
+### Page intelligence
+
+1. Click the **✦ Page** button (bottom-right) or switch to the **Page Intel** tab.
+2. Click **Read Page** to extract content.
+3. **Summarize** for a structured summary, or **Chat with Page** to ask questions ("What are the key takeaways?", "Summarize section 2.").
 
 ### Moving the panel
 
-- Click and hold the panel header and drag to move it anywhere on screen.
-- The panel stays where you drop it until you close it; the next time it opens, it appears near your selection again.
-
-### Manual Translate
-
-1. Open the panel from the persistent **✦ Page** button or a text selection.
-2. Switch to the **⌨️ Translate** tab.
-3. Type or paste text (a word, sentence, or paragraph) and click **🔄 Translate ⇄** — or press **⌘/Ctrl + Enter**.
-4. The translation streams in with the same result format, copy, and listen controls as Text Actions.
-
-### Page Intelligence
-
-1. Open any webpage.
-2. Click the persistent **✦ Page** button in the bottom-right corner, or switch to the **Page Intel** tab from the selection panel.
-3. Click **Read Page** to extract the page’s readable content.
-4. Choose one of the following:
-   - **Summarize** — produces a structured summary in markdown
-   - **Chat with Page** — starts a conversational interface grounded in the extracted page content
-5. For chat, type a question such as:
-   - “What are the key takeaways?”
-   - “Summarize section 2.”
-   - “What action items are mentioned on this page?”
-6. Use the built-in copy controls to copy summaries or assistant replies.
+Drag the panel header to reposition it anywhere on screen. It stays where you drop it until closed; the next open anchors near your selection again.
 
 ---
 
@@ -262,42 +158,72 @@ LinguaAssist/
 │   └── icons/                   # Icons and demo assets
 ├── src/
 │   ├── background/
-│   │   └── service-worker.ts    # LLM requests, page summarize, and streaming page chat
+│   │   └── service-worker.ts    # LLM requests, streaming, SSE parsing, TTS chunking
 │   ├── content/
-│   │   ├── content.tsx          # Content script, selection trigger, page FAB, page content cache
-│   │   ├── FloatingPanel.tsx    # Floating panel: Text Actions, Manual Translate, Page Intel, chat, drag handling
-│   │   ├── ChatView.tsx         # Chat bubble component with TTS support
+│   │   ├── content.tsx          # Content script: selection trigger, page FAB, caching
+│   │   ├── FloatingPanel.tsx    # Panel UI: tabs, drag handling, streaming results
+│   │   ├── ChatView.tsx         # Chat bubble component (TTS support)
 │   │   ├── ListenButton.tsx     # 🔊 TTS listen button
-│   │   ├── markdown.tsx         # Lightweight markdown renderer for results
-│   │   ├── pageExtractor.ts     # Main-content extraction from webpages
-│   │   └── tokenUtils.ts        # Token estimation, chunking, and truncation helpers
-│   ├── popup/
-│   │   ├── index.tsx            # Popup entry point
-│   │   ├── index.html
-│   │   └── Popup.tsx            # Toolbar popup UI
-│   ├── settings/
-│   │   ├── index.tsx            # Settings page entry point
-│   │   ├── index.html
-│   │   └── Settings.tsx         # LLM configuration UI
+│   │   ├── markdown.tsx         # Lightweight markdown renderer
+│   │   ├── pageExtractor.ts     # Main-content extraction
+│   │   └── tokenUtils.ts        # Token estimation, chunking, truncation
+│   ├── popup/                   # Toolbar popup
+│   ├── settings/                # Options page (LLM config, vocabulary manager)
 │   └── shared/
-│       ├── messages.ts          # Chrome runtime message and streaming helpers
-│       ├── storage.ts           # chrome.storage.local helpers (settings, vocabulary)
-│       ├── textDirection.ts     # RTL detection and language-pair labels
+│       ├── messages.ts          # Runtime message + streaming port helpers
+│       ├── storage.ts           # chrome.storage.local (settings, vocabulary)
+│       ├── textDirection.ts     # RTL detection, language-pair labels
 │       ├── theme.ts             # Shared theme tokens
-│       └── types.ts             # Shared TypeScript types for text and page workflows
+│       └── types.ts             # Shared TypeScript types
 ├── manifest.json                # Chrome Extension Manifest V3
-├── webpack.config.js            # Webpack build configuration
-├── tsconfig.json                # TypeScript configuration
-└── package.json
+└── webpack.config.js            # Build configuration
 ```
+
+## Architecture
+
+LinguaAssist follows the standard Manifest V3 layout:
+
+- **Content script** (`src/content/`) — selection detection, floating panel UI (React inside a shadow DOM root), page extraction.
+- **Service worker** (`src/background/`) — all LLM traffic. Builds system prompts per action, calls `{baseUrl}/chat/completions`, parses SSE streams, posts `CHUNK`/`DONE`/`ERROR` back over a long-lived port (`lingua-stream`), and falls back to non-streaming on failure.
+- **Shared** (`src/shared/`) — typed message contracts, storage helpers, RTL utilities.
+
+Streaming flows: `FloatingPanel` → `streamLLMRequest` (port) → service worker → provider; results render with a typewriter effect, and markdown is only applied to the final text.
+
+---
+
+## Development
+
+```bash
+npm run dev          # Webpack watch mode → dist/
+npm run build        # Production build (minified)
+npm run type-check   # TypeScript, no emit
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, conventions, and PR process. Changes are tracked in [CHANGELOG.md](CHANGELOG.md).
+
+---
+
+## Troubleshooting
+
+| Symptom | Cause & Fix |
+|---------|-------------|
+| `404 Not Found` on requests | Base URL is wrong. It must be the OpenAI-compatible root **including `/v1`** — e.g. `https://api.example.com/v1`, not `https://api.example.com` or a `/anthropic` path (that's a different API). Compare with a working `curl` to `{baseUrl}/chat/completions`. |
+| Buttons do nothing after code changes | Stale build — rerun `npm run build`, refresh the extension in `chrome://extensions`, and reload the tab. |
+| Streaming errors mid-response | The service worker automatically retries once without streaming; if that fails, the error shows in the panel. Check the worker console (extension card → *service worker* link). |
+| Gateway rejects health check | Some gateways reject extra params — the health check already sends a minimal body; verify your key and model name. |
+| Persian text renders left-aligned | This is handled automatically via RTL detection; if you see it wrong, report an issue with the page and text. |
 
 ---
 
 ## Privacy
 
-- Selected text, manual input, or page content is sent to your LLM **only** when you explicitly trigger a text or page action.
-- Nothing is stored after a response, except vocabulary entries you save explicitly — those stay in local storage only.
-- Your API key is stored in **Chrome extension storage** (`chrome.storage.local`) only.
-- No data is collected or transmitted to LinguaAssist servers.
-- All requests go **directly** from your browser to your configured LLM endpoint.
-- Data handling during LLM processing depends on your provider, so review your LLM provider's privacy policy if needed.
+- Text, manual input, and page content are sent to your LLM **only** when you explicitly trigger an action — always directly from your browser to your endpoint.
+- Nothing is stored after a response, except vocabulary entries you save explicitly (local storage only).
+- Your API key stays in `chrome.storage.local`; no data ever reaches LinguaAssist servers.
+- Review your provider's privacy policy for how they handle processed content.
+
+---
+
+## License
+
+Released under the [MIT License](LICENSE).
