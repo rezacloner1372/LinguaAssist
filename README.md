@@ -20,10 +20,12 @@ powered by your own OpenAI-compatible LLM endpoint.
 
 | | |
 |:---:|:---:|
-| ![Panel](public/icons/LinguaAssist.png) | ![Chat with Page](public/icons/chat.png) |
-| **Floating panel & text actions** | **Chat with Page** |
-| ![Summary](public/icons/summary.png) | ![Demo](public/icons/demo-LinguaAssist.png) |
-| **Structured page summary** | **Demo** |
+| ![Text Actions — Translate](public/screenshots/text-actions.png) | ![Manual Translate tab](public/screenshots/translate-tab.png) |
+| **Text Actions — Translate ⇄** | **Manual Translate tab** |
+| ![Page Intelligence](public/screenshots/page-intel.png) | ![Casual rewrite](public/screenshots/casual.png) |
+| **Page Intelligence — Read, Summarize, Chat** | **Casual rewrite** |
+| ![Draft Reply](public/screenshots/draft-reply.png) | |
+| **Draft Reply** | |
 
 ---
 
