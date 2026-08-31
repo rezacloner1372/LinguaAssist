@@ -1,7 +1,12 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import type { Action, PageContent, ChatMessage } from '../shared/types';
-import { sendLLMRequest, sendPageSummarizeRequest, streamPageChat } from '../shared/messages';
+import type { Action, PageContent, ChatMessage, PanelState, VocabEntry, LLMSettings } from '../shared/types';
+import { streamLLMRequest, streamPageChat } from '../shared/messages';
+import { getSettings, saveVocabEntry } from '../shared/storage';
+import { isRTL, langPairLabel } from '../shared/textDirection';
 import { extractPageContent } from './pageExtractor';
+import { renderMarkdown } from './markdown';
+import { ChatBubble } from './ChatView';
+import { ListenButton } from './ListenButton';
 
 interface Props {
   selectedText: string;
@@ -10,96 +15,35 @@ interface Props {
   onClose: () => void;
   cachedPageContent: PageContent | null;
   onPageContentExtracted: (content: PageContent) => void;
+  initialState: PanelState | null;
+  onPersistState: (partial: Partial<PanelState>) => void;
 }
 
 type TextState = 'idle' | 'loading' | 'success' | 'error';
 type PageIntelState = 'idle' | 'extracting' | 'extracted' | 'summarizing' | 'summarized' | 'error';
-type PanelView = 'text' | 'page';
+type PanelView = 'text' | 'page' | 'manual';
 
-const TEXT_ACTIONS: { key: Action; label: string; icon: string }[] = [
-  { key: 'translate_to_persian', label: 'Translate → Persian', icon: '🔄' },
-  { key: 'translate_to_english', label: 'Translate → English', icon: '🔄' },
+// Primary translate action renders full-width; the rest fill a 2-col grid.
+// Keep labels short — grid buttons are ~160px wide.
+const PRIMARY_ACTION = { key: 'translate' as Action, label: 'Translate ⇄', icon: '🔄' };
+const GRID_ACTIONS: { key: Action; label: string; icon: string }[] = [
+  { key: 'explain', label: 'Explain', icon: '💡' },
+  { key: 'summarize_selection', label: 'Summarize', icon: '📋' },
   { key: 'fix_grammar', label: 'Fix Grammar', icon: '✏️' },
+  { key: 'rewrite_formal', label: 'Formal', icon: '🎩' },
+  { key: 'rewrite_casual', label: 'Casual', icon: '😊' },
+  { key: 'reply_draft', label: 'Draft Reply', icon: '↩️' },
 ];
+
+const TRANSLATE_ACTIONS = new Set<Action>(['translate', 'translate_to_persian', 'translate_to_english']);
 
 const fontStack = "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif";
 
-// ─── Simple inline markdown renderer ────────────────────────────────────────
 // Panel sizing constants
 const PANEL_WIDTH_NORMAL = 360;
 const PANEL_WIDTH_CHAT = 400;
 const PANEL_MAX_HEIGHT_NORMAL = 560;
 const PANEL_MAX_HEIGHT_CHAT = 600;
-
-function renderMarkdown(text: string): React.ReactNode {
-  const lines = text.split('\n');
-  const nodes: React.ReactNode[] = [];
-  let listItems: React.ReactNode[] = [];
-  let lineIdx = 0;
-
-  function flushList() {
-    if (listItems.length > 0) {
-      nodes.push(
-        <ul key={`ul-${lineIdx}`} style={{ margin: '4px 0 8px 0', paddingLeft: '18px' }}>
-          {listItems}
-        </ul>
-      );
-      listItems = [];
-    }
-  }
-
-  function processInline(str: string, lineKey: string): React.ReactNode[] {
-    const parts: React.ReactNode[] = [];
-    const pattern = /(\*\*(.*?)\*\*|`(.*?)`)/g;
-    let last = 0;
-    let matchIdx = 0;
-    let m: RegExpExecArray | null;
-    while ((m = pattern.exec(str)) !== null) {
-      if (m.index > last) parts.push(<span key={`${lineKey}-t${matchIdx++}`}>{str.slice(last, m.index)}</span>);
-      if (m[2] !== undefined) {
-        parts.push(<strong key={`${lineKey}-b${matchIdx++}`}>{m[2]}</strong>);
-      } else if (m[3] !== undefined) {
-        parts.push(
-          <code key={`${lineKey}-c${matchIdx++}`} style={{ background: '#EEF0FF', padding: '1px 5px', borderRadius: '4px', fontSize: '12px', fontFamily: 'monospace' }}>
-            {m[3]}
-          </code>
-        );
-      }
-      last = m.index + m[0].length;
-    }
-    if (last < str.length) parts.push(<span key={`${lineKey}-t${matchIdx}`}>{str.slice(last)}</span>);
-    return parts;
-  }
-
-  for (const line of lines) {
-    const lineKey = `l${lineIdx}`;
-    if (/^#{1,3}\s/.test(line)) {
-      flushList();
-      const content = line.replace(/^#+\s/, '');
-      nodes.push(
-        <div key={lineKey} style={{ fontWeight: 700, fontSize: '13px', color: '#3F51B5', margin: '10px 0 4px' }}>
-          {processInline(content, lineKey)}
-        </div>
-      );
-    } else if (/^[-*•]\s/.test(line)) {
-      const content = line.replace(/^[-*•]\s/, '');
-      listItems.push(<li key={lineKey} style={{ marginBottom: '2px', lineHeight: '1.5' }}>{processInline(content, lineKey)}</li>);
-    } else if (line.trim() === '') {
-      flushList();
-      nodes.push(<div key={lineKey} style={{ height: '4px' }} />);
-    } else {
-      flushList();
-      nodes.push(
-        <p key={lineKey} style={{ margin: '0 0 6px', lineHeight: '1.6' }}>
-          {processInline(line, lineKey)}
-        </p>
-      );
-    }
-    lineIdx++;
-  }
-  flushList();
-  return <>{nodes}</>;
-}
 
 export function FloatingPanel({
   selectedText,
@@ -108,32 +52,44 @@ export function FloatingPanel({
   onClose,
   cachedPageContent,
   onPageContentExtracted,
+  initialState,
+  onPersistState,
 }: Props) {
   const hasText = selectedText.length > 0;
 
+  // ── Settings (TTS toggle) ──
+  const [settings, setSettings] = useState<LLMSettings | null>(null);
+  useEffect(() => {
+    getSettings().then(setSettings);
+  }, []);
+  const ttsEnabled = settings?.ttsEnabled !== false;
+
   // ── View ──
-  const [activeView, setActiveView] = useState<PanelView>(hasText ? 'text' : 'page');
+  const [activeView, setActiveView] = useState<PanelView>(
+    initialState?.activeView ?? (hasText ? 'text' : 'page')
+  );
   const [chatOpen, setChatOpen] = useState(false);
 
-  // ── Text action state ──
-  const [textState, setTextState] = useState<TextState>('idle');
-  const [textResult, setTextResult] = useState('');
+  // ── Text action state (persisted across panel open/close) ──
+  const [textState, setTextState] = useState<TextState>(initialState?.textResult ? 'success' : 'idle');
+  const [textResult, setTextResult] = useState(initialState?.textResult ?? '');
   const [textError, setTextError] = useState('');
-  const [activeTextAction, setActiveTextAction] = useState<Action | null>(null);
+  const [activeTextAction, setActiveTextAction] = useState<Action | null>(initialState?.activeTextAction ?? null);
   const [textCopied, setTextCopied] = useState(false);
+  const [vocabSaved, setVocabSaved] = useState(false);
 
   // ── Page intelligence state ──
   const [pageIntelState, setPageIntelState] = useState<PageIntelState>(
     cachedPageContent ? 'extracted' : 'idle'
   );
   const [pageContent, setPageContent] = useState<PageContent | null>(cachedPageContent);
-  const [summary, setSummary] = useState('');
+  const [summary, setSummary] = useState(initialState?.summary ?? '');
   const [pageError, setPageError] = useState('');
   const [summaryCopied, setSummaryCopied] = useState(false);
   const [summaryExpanded, setSummaryExpanded] = useState(true);
 
-  // ── Chat state ──
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  // ── Chat state (persisted) ──
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(initialState?.chatMessages ?? []);
   const [chatInput, setChatInput] = useState('');
   const [chatSending, setChatSending] = useState(false);
   const [streamingContent, setStreamingContent] = useState('');
@@ -142,6 +98,28 @@ export function FloatingPanel({
   const chatEndRef = useRef<HTMLDivElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
   const disconnectRef = useRef<(() => void) | null>(null);
+  const textDisconnectRef = useRef<(() => void) | null>(null);
+  const summaryDisconnectRef = useRef<(() => void) | null>(null);
+
+  // Persist key state on change
+  useEffect(() => {
+    onPersistState({ textResult, activeTextAction });
+  }, [textResult, activeTextAction, onPersistState]);
+  useEffect(() => {
+    onPersistState({ summary });
+  }, [summary, onPersistState]);
+  useEffect(() => {
+    onPersistState({ chatMessages });
+  }, [chatMessages, onPersistState]);
+
+  // Disconnect any in-flight streams on unmount
+  useEffect(() => {
+    return () => {
+      textDisconnectRef.current?.();
+      summaryDisconnectRef.current?.();
+      disconnectRef.current?.();
+    };
+  }, []);
 
   // Auto-scroll chat
   useEffect(() => {
@@ -167,27 +145,127 @@ export function FloatingPanel({
   if (top + estimatedHeight > window.innerHeight - padding) top = Math.max(padding, anchorY - estimatedHeight - 8);
   if (top < padding) top = padding;
 
-  // ── Text action handler ──
-  const handleTextAction = useCallback(async (action: Action) => {
+  // ── Dragging (click + hold header to move; position resets when panel closes) ──
+  const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const handleHeaderMouseDown = useCallback((e: React.MouseEvent) => {
+    // Don't start a drag from the header's buttons (close / back-to-page)
+    if ((e.target as HTMLElement).closest('button')) return;
+    e.preventDefault();
+    const panel = panelRef.current;
+    if (!panel) return;
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const origLeft = panel.getBoundingClientRect().left;
+    const origTop = panel.getBoundingClientRect().top;
+    setIsDragging(true);
+
+    const onMove = (ev: MouseEvent) => {
+      const pad = 8;
+      const maxX = Math.max(pad, window.innerWidth - panel.offsetWidth - pad);
+      const maxY = Math.max(pad, window.innerHeight - panel.offsetHeight - pad);
+      setDragPos({
+        x: Math.min(Math.max(origLeft + (ev.clientX - startX), pad), maxX),
+        y: Math.min(Math.max(origTop + (ev.clientY - startY), pad), maxY),
+      });
+    };
+    const onUp = () => {
+      setIsDragging(false);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, []);
+
+  const panelLeft = dragPos ? dragPos.x : left;
+  const panelTop = dragPos ? dragPos.y : top;
+
+  // ── Text action handler (streaming with typewriter effect) ──
+  const handleTextAction = useCallback((action: Action) => {
+    textDisconnectRef.current?.();
     setActiveTextAction(action);
     setTextState('loading');
     setTextResult('');
     setTextError('');
     setTextCopied(false);
-    try {
-      const response = await sendLLMRequest({ text: selectedText, action });
-      if (response.success && response.data) {
-        setTextResult(response.data);
+    setVocabSaved(false);
+
+    let accumulated = '';
+    const disconnect = streamLLMRequest(
+      { type: 'TEXT_ACTION_STREAM', payload: { text: selectedText, action } },
+      (chunk) => {
+        accumulated += chunk;
+        setTextResult(accumulated);
+      },
+      () => {
         setTextState('success');
-      } else {
-        setTextError(response.error ?? 'Unknown error occurred.');
+        textDisconnectRef.current = null;
+      },
+      (err) => {
+        setTextError(err);
         setTextState('error');
-      }
-    } catch {
-      setTextError('Failed to contact extension background. Please reload.');
-      setTextState('error');
-    }
+        textDisconnectRef.current = null;
+      },
+    );
+    textDisconnectRef.current = disconnect;
   }, [selectedText]);
+
+  // ── Manual translate (typed/pasted text, same stream as text actions) ──
+  const [manualInput, setManualInput] = useState('');
+  const [manualState, setManualState] = useState<TextState>('idle');
+  const [manualResult, setManualResult] = useState('');
+  const [manualError, setManualError] = useState('');
+  const [manualCopied, setManualCopied] = useState(false);
+  const manualDisconnectRef = useRef<(() => void) | null>(null);
+  const manualInputRtl = isRTL(manualInput);
+  const manualResultRtl = isRTL(manualResult);
+
+  // Disconnect in-flight manual stream on unmount
+  useEffect(() => {
+    return () => {
+      manualDisconnectRef.current?.();
+    };
+  }, []);
+
+  const handleManualTranslate = useCallback(() => {
+    const text = manualInput.trim();
+    if (!text) return;
+    manualDisconnectRef.current?.();
+    setManualState('loading');
+    setManualResult('');
+    setManualError('');
+    setManualCopied(false);
+
+    let accumulated = '';
+    const disconnect = streamLLMRequest(
+      { type: 'TEXT_ACTION_STREAM', payload: { text, action: 'translate' } },
+      (chunk) => {
+        accumulated += chunk;
+        setManualResult(accumulated);
+      },
+      () => {
+        setManualState('success');
+        manualDisconnectRef.current = null;
+      },
+      (err) => {
+        setManualError(err);
+        setManualState('error');
+        manualDisconnectRef.current = null;
+      },
+    );
+    manualDisconnectRef.current = disconnect;
+  }, [manualInput]);
+
+  const handleManualCopy = useCallback(() => {
+    navigator.clipboard.writeText(manualResult).then(() => {
+      setManualCopied(true);
+      setTimeout(() => setManualCopied(false), 2000);
+    });
+  }, [manualResult]);
 
   const handleTextCopy = useCallback(() => {
     navigator.clipboard.writeText(textResult).then(() => {
@@ -195,6 +273,21 @@ export function FloatingPanel({
       setTimeout(() => setTextCopied(false), 2000);
     });
   }, [textResult]);
+
+  const handleSaveVocab = useCallback(() => {
+    const entry: VocabEntry = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      source: selectedText,
+      translation: textResult,
+      pageUrl: location.href,
+      savedAt: Date.now(),
+      langPair: langPairLabel(selectedText, textResult),
+    };
+    saveVocabEntry(entry).then(() => {
+      setVocabSaved(true);
+      setTimeout(() => setVocabSaved(false), 2000);
+    });
+  }, [selectedText, textResult]);
 
   // ── Page extraction ──
   const handleReadPage = useCallback(async () => {
@@ -214,7 +307,7 @@ export function FloatingPanel({
     }
   }, [onPageContentExtracted]);
 
-  // ── Summarize ──
+  // ── Summarize (streaming) ──
   const handleSummarize = useCallback(async () => {
     let content = pageContent;
     if (!content) {
@@ -233,24 +326,31 @@ export function FloatingPanel({
         return;
       }
     }
+    summaryDisconnectRef.current?.();
     setSummary('');
     setSummaryCopied(false);
     setSummaryExpanded(true);
     setPageError('');
     setPageIntelState('summarizing');
-    try {
-      const response = await sendPageSummarizeRequest({ pageContent: content });
-      if (response.success && response.data) {
-        setSummary(response.data);
+
+    let accumulated = '';
+    const disconnect = streamLLMRequest(
+      { type: 'PAGE_SUMMARIZE_STREAM', payload: { pageContent: content } },
+      (chunk) => {
+        accumulated += chunk;
+        setSummary(accumulated);
+      },
+      () => {
         setPageIntelState('summarized');
-      } else {
-        setPageError(response.error ?? 'Unknown error occurred.');
+        summaryDisconnectRef.current = null;
+      },
+      (err) => {
+        setPageError(err);
         setPageIntelState(content ? 'extracted' : 'error');
-      }
-    } catch {
-      setPageError('Failed to contact extension background. Please reload.');
-      setPageIntelState(content ? 'extracted' : 'error');
-    }
+        summaryDisconnectRef.current = null;
+      },
+    );
+    summaryDisconnectRef.current = disconnect;
   }, [pageContent, onPageContentExtracted]);
 
   // ── Chat ──
@@ -343,6 +443,10 @@ export function FloatingPanel({
     ? selectedText.slice(0, 120) + '…'
     : selectedText;
 
+  const selectedTextRtl = isRTL(selectedText);
+  const textResultRtl = isRTL(textResult);
+  const summaryRtl = isRTL(summary);
+
   // ── Shared button style helpers ──
   const actionBtnStyle = (active: boolean, disabled: boolean): React.CSSProperties => ({
     display: 'flex',
@@ -363,15 +467,62 @@ export function FloatingPanel({
     width: '100%',
   });
 
+  const actionHover = {
+    onMouseEnter: (e: React.MouseEvent<HTMLButtonElement>) => {
+      e.currentTarget.style.background = '#EEF0FF';
+      e.currentTarget.style.borderColor = '#C5CAE9';
+      e.currentTarget.style.color = '#3F51B5';
+    },
+    onMouseLeave: (e: React.MouseEvent<HTMLButtonElement>) => {
+      e.currentTarget.style.background = '#F8F9FE';
+      e.currentTarget.style.borderColor = '#E8EAF6';
+      e.currentTarget.style.color = '#374151';
+    },
+  };
+
+  const renderActionButton = ({ key, label, icon }: { key: Action; label: string; icon: string }) => {
+    const isActive = activeTextAction === key && textState === 'loading';
+    return (
+      <button
+        key={key}
+        onClick={() => handleTextAction(key)}
+        disabled={textState === 'loading'}
+        style={actionBtnStyle(activeTextAction === key, textState === 'loading' && activeTextAction !== key)}
+        onMouseEnter={e => { if (textState !== 'loading') actionHover.onMouseEnter(e); }}
+        onMouseLeave={e => { if (activeTextAction !== key) actionHover.onMouseLeave(e); }}
+      >
+        <span style={{
+          display: 'inline-block',
+          ...(isActive ? { animation: 'linguaSpin 0.8s linear infinite' } : {}),
+        }}>{isActive ? '⟳' : icon}</span>
+        {isActive ? 'Processing…' : label}
+      </button>
+    );
+  };
+
+  // Streaming cursor element (reused by text result and summary)
+  const streamCursor = (
+    <span style={{
+      display: 'inline-block',
+      width: '2px',
+      height: '14px',
+      background: '#5C6BC0',
+      marginLeft: '2px',
+      verticalAlign: 'text-bottom',
+      animation: 'linguaPulse 0.8s ease-in-out infinite',
+    }} />
+  );
+
   // ─────────────────────────────────────────────────────────────────────────
   // RENDER
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <div
+      ref={panelRef}
       style={{
         position: 'fixed',
-        left: `${left}px`,
-        top: `${top}px`,
+        left: `${panelLeft}px`,
+        top: `${panelTop}px`,
         width: `${panelWidth}px`,
         maxHeight: `${chatOpen ? PANEL_MAX_HEIGHT_CHAT : PANEL_MAX_HEIGHT_NORMAL}px`,
         background: '#FFFFFF',
@@ -387,6 +538,7 @@ export function FloatingPanel({
         flexDirection: 'column',
         animation: 'linguaFadeIn 0.18s ease',
         userSelect: 'none',
+        ...(isDragging ? { transition: 'none', boxShadow: '0 14px 40px rgba(0,0,0,0.22)' } : {}),
       }}
       onMouseDown={(e) => e.stopPropagation()}
     >
@@ -404,8 +556,10 @@ export function FloatingPanel({
         }
       `}</style>
 
-      {/* ── Header ── */}
-      <div style={{
+      {/* ── Header (drag handle) ── */}
+      <div
+        onMouseDown={handleHeaderMouseDown}
+        style={{
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
@@ -413,6 +567,7 @@ export function FloatingPanel({
         background: 'linear-gradient(135deg, #5C6BC0 0%, #7986CB 100%)',
         borderRadius: '16px 16px 0 0',
         flexShrink: 0,
+        cursor: isDragging ? 'grabbing' : 'grab',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
           {chatOpen && (
@@ -464,34 +619,36 @@ export function FloatingPanel({
         </button>
       </div>
 
-      {/* ── Tab Bar (only when text is selected and not in chat) ── */}
-      {hasText && !chatOpen && (
+      {/* ── Tab Bar (only when not in chat) ── */}
+      {!chatOpen && (
         <div style={{
           display: 'flex',
           borderBottom: '1px solid #E8EAF6',
           flexShrink: 0,
         }}>
-          {(['text', 'page'] as PanelView[]).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveView(tab)}
-              style={{
-                flex: 1,
-                padding: '9px 0',
-                background: activeView === tab ? '#FFFFFF' : '#F8F9FE',
-                border: 'none',
-                borderBottom: `2px solid ${activeView === tab ? '#5C6BC0' : 'transparent'}`,
-                cursor: 'pointer',
-                fontSize: '12px',
-                fontWeight: activeView === tab ? 600 : 400,
-                color: activeView === tab ? '#5C6BC0' : '#6B7280',
-                fontFamily: fontStack,
-                transition: 'all 0.15s',
-                letterSpacing: '0.03em',
-              }}
-            >
-              {tab === 'text' ? '✏️ Text Actions' : '📄 Page Intel'}
-            </button>
+          {(['text', 'page', 'manual'] as PanelView[]).map((tab) => (
+            (!hasText && tab === 'text') ? null : (
+              <button
+                key={tab}
+                onClick={() => setActiveView(tab)}
+                style={{
+                  flex: 1,
+                  padding: '9px 0',
+                  background: activeView === tab ? '#FFFFFF' : '#F8F9FE',
+                  border: 'none',
+                  borderBottom: `2px solid ${activeView === tab ? '#5C6BC0' : 'transparent'}`,
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: activeView === tab ? 600 : 400,
+                  color: activeView === tab ? '#5C6BC0' : '#6B7280',
+                  fontFamily: fontStack,
+                  transition: 'all 0.15s',
+                  letterSpacing: '0.03em',
+                }}
+              >
+                {tab === 'text' ? '✏️ Text Actions' : tab === 'page' ? '📄 Page Intel' : '⌨️ Translate'}
+              </button>
+            )
           ))}
         </div>
       )}
@@ -554,7 +711,7 @@ export function FloatingPanel({
             )}
 
             {chatMessages.map((msg) => (
-              <ChatBubble key={`${msg.role}-${msg.timestamp}`} message={msg} fontStack={fontStack} />
+              <ChatBubble key={`${msg.role}-${msg.timestamp}`} message={msg} fontStack={fontStack} ttsEnabled={ttsEnabled} renderMarkdown={renderMarkdown} />
             ))}
 
             {/* Streaming assistant bubble */}
@@ -572,15 +729,7 @@ export function FloatingPanel({
                 }}>
                   {streamingContent ? (
                     <div style={{ whiteSpace: 'pre-wrap' }}>{streamingContent}
-                      <span style={{
-                        display: 'inline-block',
-                        width: '2px',
-                        height: '14px',
-                        background: '#5C6BC0',
-                        marginLeft: '2px',
-                        verticalAlign: 'text-bottom',
-                        animation: 'linguaPulse 0.8s ease-in-out infinite',
-                      }} />
+                      {streamCursor}
                     </div>
                   ) : (
                     <div style={{ display: 'flex', gap: '4px', alignItems: 'center', padding: '2px 0' }}>
@@ -690,18 +839,22 @@ export function FloatingPanel({
             <div style={{ fontSize: '11px', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '4px' }}>
               Selected Text
             </div>
-            <div style={{
-              fontSize: '13px',
-              color: '#374151',
-              lineHeight: '1.5',
-              maxHeight: '56px',
-              overflow: 'hidden',
-              background: '#F8F9FE',
-              borderRadius: '8px',
-              padding: '7px 10px',
-              border: '1px solid #E8EAF6',
-              fontStyle: 'italic',
-            }}>
+            <div
+              dir={selectedTextRtl ? 'rtl' : 'ltr'}
+              style={{
+                fontSize: '13px',
+                color: '#374151',
+                lineHeight: '1.5',
+                maxHeight: '56px',
+                overflow: 'hidden',
+                background: '#F8F9FE',
+                borderRadius: '8px',
+                padding: '7px 10px',
+                border: '1px solid #E8EAF6',
+                fontStyle: 'italic',
+                textAlign: selectedTextRtl ? 'right' : 'left',
+              }}
+            >
               "{truncatedText}"
             </div>
           </div>
@@ -712,37 +865,10 @@ export function FloatingPanel({
               Actions
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-              {TEXT_ACTIONS.map(({ key, label, icon }) => {
-                const isActive = activeTextAction === key && textState === 'loading';
-                return (
-                  <button
-                    key={key}
-                    onClick={() => handleTextAction(key)}
-                    disabled={textState === 'loading'}
-                    style={actionBtnStyle(activeTextAction === key, textState === 'loading' && activeTextAction !== key)}
-                    onMouseEnter={e => {
-                      if (textState !== 'loading') {
-                        e.currentTarget.style.background = '#EEF0FF';
-                        e.currentTarget.style.borderColor = '#C5CAE9';
-                        e.currentTarget.style.color = '#3F51B5';
-                      }
-                    }}
-                    onMouseLeave={e => {
-                      if (activeTextAction !== key) {
-                        e.currentTarget.style.background = '#F8F9FE';
-                        e.currentTarget.style.borderColor = '#E8EAF6';
-                        e.currentTarget.style.color = '#374151';
-                      }
-                    }}
-                  >
-                    <span style={{
-                      display: 'inline-block',
-                      ...(isActive ? { animation: 'linguaSpin 0.8s linear infinite' } : {}),
-                    }}>{isActive ? '⟳' : icon}</span>
-                    {isActive ? 'Processing…' : label}
-                  </button>
-                );
-              })}
+              {renderActionButton(PRIMARY_ACTION)}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px' }}>
+                {GRID_ACTIONS.map(renderActionButton)}
+              </div>
             </div>
           </div>
 
@@ -754,7 +880,89 @@ export function FloatingPanel({
                 <div>Select an action to get started</div>
               </div>
             )}
-            {textState === 'loading' && (
+            {textState === 'error' && (
+              <ErrorCard error={textError} fontStack={fontStack} />
+            )}
+            {(textState === 'loading' || textState === 'success') && textResult !== '' && (
+              <div>
+                <div style={{ fontSize: '11px', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '5px' }}>
+                  Result
+                </div>
+                <div
+                  dir={textResultRtl ? 'rtl' : 'ltr'}
+                  style={{
+                    background: '#F0F4FF',
+                    border: '1px solid #C5CAE9',
+                    borderRadius: '10px',
+                    padding: '10px 12px',
+                    fontSize: '14px',
+                    color: '#1A1A2E',
+                    lineHeight: '1.7',
+                    maxHeight: '160px',
+                    overflowY: 'auto',
+                    textAlign: textResultRtl ? 'right' : 'left',
+                  }}
+                >
+                  {textState === 'loading' ? (
+                    <span style={{ whiteSpace: 'pre-wrap' }}>{textResult}{streamCursor}</span>
+                  ) : (
+                    renderMarkdown(textResult)
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
+                  <button
+                    onClick={handleTextCopy}
+                    disabled={textState === 'loading'}
+                    style={{
+                      flex: 1,
+                      padding: '8px',
+                      background: textCopied ? '#43A047' : '#5C6BC0',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '10px',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      cursor: textState === 'loading' ? 'not-allowed' : 'pointer',
+                      fontFamily: fontStack,
+                      transition: 'all 0.2s ease',
+                      opacity: textState === 'loading' ? 0.6 : 1,
+                    }}
+                  >
+                    {textCopied ? '✓ Copied!' : '⎘ Copy Result'}
+                  </button>
+                  {activeTextAction && TRANSLATE_ACTIONS.has(activeTextAction) && textState === 'success' && (
+                    <button
+                      onClick={handleSaveVocab}
+                      style={{
+                        padding: '8px 12px',
+                        background: vocabSaved ? '#43A047' : '#FFFFFF',
+                        color: vocabSaved ? 'white' : '#5C6BC0',
+                        border: `1px solid ${vocabSaved ? '#43A047' : '#C5CAE9'}`,
+                        borderRadius: '10px',
+                        fontSize: '13px',
+                        fontWeight: 500,
+                        cursor: 'pointer',
+                        fontFamily: fontStack,
+                        transition: 'all 0.2s ease',
+                        flexShrink: 0,
+                      }}
+                      title="Save to vocabulary"
+                    >
+                      {vocabSaved ? '✓ Saved' : '📚 Save'}
+                    </button>
+                  )}
+                  {ttsEnabled && textState === 'success' && textResult && (
+                    <div style={{
+                      display: 'flex', alignItems: 'center', padding: '0 10px',
+                      border: '1px solid #C5CAE9', borderRadius: '10px', flexShrink: 0,
+                    }}>
+                      <ListenButton text={textResult} fontStack={fontStack} />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            {textState === 'loading' && textResult === '' && (
               <div style={{ textAlign: 'center', color: '#5C6BC0', fontSize: '13px', paddingTop: '12px' }}>
                 <div style={{
                   display: 'inline-block', width: '22px', height: '22px',
@@ -764,54 +972,151 @@ export function FloatingPanel({
                 <div>Thinking…</div>
               </div>
             )}
-            {textState === 'error' && (
-              <ErrorCard error={textError} fontStack={fontStack} />
+          </div>
+        </div>
+      )}
+
+      {/* ─────────────────── MANUAL TRANSLATE TAB ─────────────────── */}
+      {!chatOpen && activeView === 'manual' && (
+        <div style={{ display: 'flex', flexDirection: 'column', flex: 1, overflow: 'hidden', minHeight: 0 }}>
+          {/* Input */}
+          <div style={{ padding: '10px 14px', borderBottom: '1px solid #F0F2FF', flexShrink: 0 }}>
+            <div style={{ fontSize: '11px', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '7px' }}>
+              Translate Text
+            </div>
+            <textarea
+              dir={manualInputRtl ? 'rtl' : 'ltr'}
+              value={manualInput}
+              onChange={(e) => setManualInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  handleManualTranslate();
+                }
+              }}
+              placeholder="Type or paste a word, sentence, or paragraph…"
+              disabled={manualState === 'loading'}
+              style={{
+                width: '100%',
+                minHeight: '84px',
+                maxHeight: '160px',
+                resize: 'vertical',
+                padding: '8px 11px',
+                border: '1px solid #E8EAF6',
+                borderRadius: '10px',
+                fontSize: '13px',
+                fontFamily: fontStack,
+                outline: 'none',
+                color: '#1A1A2E',
+                background: manualState === 'loading' ? '#F8F9FE' : '#FAFBFF',
+                transition: 'border-color 0.15s',
+                boxSizing: 'border-box',
+                lineHeight: '1.6',
+                textAlign: manualInputRtl ? 'right' : 'left',
+              }}
+              onFocus={(e) => (e.currentTarget.style.borderColor = '#5C6BC0')}
+              onBlur={(e) => (e.currentTarget.style.borderColor = '#E8EAF6')}
+            />
+            <button
+              onClick={handleManualTranslate}
+              disabled={manualState === 'loading' || !manualInput.trim()}
+              style={{
+                width: '100%',
+                marginTop: '7px',
+                padding: '9px',
+                background: manualState === 'loading' || !manualInput.trim() ? '#C5CAE9' : '#5C6BC0',
+                color: 'white',
+                border: 'none',
+                borderRadius: '10px',
+                fontSize: '13px',
+                fontWeight: 500,
+                cursor: manualState === 'loading' || !manualInput.trim() ? 'not-allowed' : 'pointer',
+                fontFamily: fontStack,
+                transition: 'all 0.15s',
+              }}
+            >
+              {manualState === 'loading' ? 'Translating…' : '🔄 Translate ⇄'}
+            </button>
+          </div>
+
+          {/* Result — same format as Text Actions tab */}
+          <div style={{ padding: '10px 14px', flex: 1, overflowY: 'auto', minHeight: 0 }}>
+            {manualState === 'idle' && (
+              <div style={{ textAlign: 'center', color: '#9CA3AF', fontSize: '13px', paddingTop: '10px' }}>
+                <div style={{ fontSize: '22px', marginBottom: '5px' }}>⌨️</div>
+                <div>Enter text and press Translate</div>
+                <div style={{ fontSize: '11px', marginTop: '4px', color: '#C4C9E8' }}>⌘/Ctrl + Enter also works</div>
+              </div>
             )}
-            {textState === 'success' && (
+            {manualState === 'error' && (
+              <ErrorCard error={manualError} fontStack={fontStack} />
+            )}
+            {(manualState === 'loading' || manualState === 'success') && manualResult !== '' && (
               <div>
                 <div style={{ fontSize: '11px', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: '5px' }}>
                   Result
                 </div>
-                <div style={{
-                  background: '#F0F4FF',
-                  border: '1px solid #C5CAE9',
-                  borderRadius: '10px',
-                  padding: '10px 12px',
-                  fontSize: '14px',
-                  color: '#1A1A2E',
-                  lineHeight: '1.7',
-                  maxHeight: '120px',
-                  overflowY: 'auto',
-                  direction: activeTextAction === 'translate_to_persian' ? 'rtl' : 'ltr',
-                  textAlign: activeTextAction === 'translate_to_persian' ? 'right' : 'left',
-                }}>
-                  {textResult}
-                </div>
-                <button
-                  onClick={handleTextCopy}
+                <div
+                  dir={manualResultRtl ? 'rtl' : 'ltr'}
                   style={{
-                    marginTop: '8px',
-                    width: '100%',
-                    padding: '8px',
-                    background: textCopied ? '#43A047' : '#5C6BC0',
-                    color: 'white',
-                    border: 'none',
+                    background: '#F0F4FF',
+                    border: '1px solid #C5CAE9',
                     borderRadius: '10px',
-                    fontSize: '13px',
-                    fontWeight: 500,
-                    cursor: 'pointer',
-                    fontFamily: fontStack,
-                    transition: 'all 0.2s ease',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '5px',
+                    padding: '10px 12px',
+                    fontSize: '14px',
+                    color: '#1A1A2E',
+                    lineHeight: '1.7',
+                    maxHeight: '160px',
+                    overflowY: 'auto',
+                    textAlign: manualResultRtl ? 'right' : 'left',
                   }}
-                  onMouseEnter={e => { if (!textCopied) e.currentTarget.style.background = '#3F51B5'; }}
-                  onMouseLeave={e => { if (!textCopied) e.currentTarget.style.background = '#5C6BC0'; }}
                 >
-                  {textCopied ? '✓ Copied!' : '⎘ Copy Result'}
-                </button>
+                  {manualState === 'loading' ? (
+                    <span style={{ whiteSpace: 'pre-wrap' }}>{manualResult}{streamCursor}</span>
+                  ) : (
+                    renderMarkdown(manualResult)
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
+                  <button
+                    onClick={handleManualCopy}
+                    disabled={manualState === 'loading'}
+                    style={{
+                      flex: 1,
+                      padding: '8px',
+                      background: manualCopied ? '#43A047' : '#5C6BC0',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '10px',
+                      fontSize: '13px',
+                      fontWeight: 500,
+                      cursor: manualState === 'loading' ? 'not-allowed' : 'pointer',
+                      fontFamily: fontStack,
+                      transition: 'all 0.2s ease',
+                      opacity: manualState === 'loading' ? 0.6 : 1,
+                    }}
+                  >
+                    {manualCopied ? '✓ Copied!' : '⎘ Copy Result'}
+                  </button>
+                  {ttsEnabled && manualState === 'success' && manualResult && (
+                    <div style={{
+                      display: 'flex', alignItems: 'center', padding: '0 10px',
+                      border: '1px solid #C5CAE9', borderRadius: '10px', flexShrink: 0,
+                    }}>
+                      <ListenButton text={manualResult} fontStack={fontStack} />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            {manualState === 'loading' && manualResult === '' && (
+              <div style={{ textAlign: 'center', color: '#5C6BC0', fontSize: '13px', paddingTop: '12px' }}>
+                <div style={{
+                  display: 'inline-block', width: '22px', height: '22px',
+                  border: '2px solid #C5CAE9', borderTopColor: '#5C6BC0',
+                  borderRadius: '50%', animation: 'linguaSpin 0.7s linear infinite', marginBottom: '7px',
+                }} />
+                <div>Thinking…</div>
               </div>
             )}
           </div>
@@ -882,18 +1187,10 @@ export function FloatingPanel({
                     pageIntelState === 'extracting' || pageIntelState === 'summarizing',
                   )}
                   onMouseEnter={e => {
-                    if (pageIntelState !== 'extracting' && pageIntelState !== 'summarizing') {
-                      e.currentTarget.style.background = '#EEF0FF';
-                      e.currentTarget.style.borderColor = '#C5CAE9';
-                      e.currentTarget.style.color = '#3F51B5';
-                    }
+                    if (pageIntelState !== 'extracting' && pageIntelState !== 'summarizing') actionHover.onMouseEnter(e);
                   }}
                   onMouseLeave={e => {
-                    if (pageIntelState !== 'extracting') {
-                      e.currentTarget.style.background = '#F8F9FE';
-                      e.currentTarget.style.borderColor = '#E8EAF6';
-                      e.currentTarget.style.color = '#374151';
-                    }
+                    if (pageIntelState !== 'extracting') actionHover.onMouseLeave(e);
                   }}
                 >
                   <span style={{
@@ -914,18 +1211,10 @@ export function FloatingPanel({
                     pageIntelState === 'extracting' || pageIntelState === 'summarizing',
                   )}
                   onMouseEnter={e => {
-                    if (pageIntelState !== 'extracting' && pageIntelState !== 'summarizing') {
-                      e.currentTarget.style.background = '#EEF0FF';
-                      e.currentTarget.style.borderColor = '#C5CAE9';
-                      e.currentTarget.style.color = '#3F51B5';
-                    }
+                    if (pageIntelState !== 'extracting' && pageIntelState !== 'summarizing') actionHover.onMouseEnter(e);
                   }}
                   onMouseLeave={e => {
-                    if (pageIntelState !== 'summarizing') {
-                      e.currentTarget.style.background = '#F8F9FE';
-                      e.currentTarget.style.borderColor = '#E8EAF6';
-                      e.currentTarget.style.color = '#374151';
-                    }
+                    if (pageIntelState !== 'summarizing') actionHover.onMouseLeave(e);
                   }}
                 >
                   <span style={{
@@ -946,17 +1235,9 @@ export function FloatingPanel({
                     pageIntelState === 'extracting' || pageIntelState === 'summarizing',
                   )}
                   onMouseEnter={e => {
-                    if (pageIntelState !== 'extracting' && pageIntelState !== 'summarizing') {
-                      e.currentTarget.style.background = '#EEF0FF';
-                      e.currentTarget.style.borderColor = '#C5CAE9';
-                      e.currentTarget.style.color = '#3F51B5';
-                    }
+                    if (pageIntelState !== 'extracting' && pageIntelState !== 'summarizing') actionHover.onMouseEnter(e);
                   }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.background = '#F8F9FE';
-                    e.currentTarget.style.borderColor = '#E8EAF6';
-                    e.currentTarget.style.color = '#374151';
-                  }}
+                  onMouseLeave={actionHover.onMouseLeave}
                 >
                   <span>💬</span>
                   Chat with Page
@@ -980,7 +1261,7 @@ export function FloatingPanel({
             </div>
 
             {/* Summary result */}
-            {(pageIntelState === 'summarized' || pageIntelState === 'summarizing') && (
+            {(pageIntelState === 'summarized' || pageIntelState === 'summarizing' || (summary !== '' && pageIntelState === 'extracted')) && (
               <div style={{ padding: '10px 14px' }}>
                 <div style={{
                   display: 'flex',
@@ -991,7 +1272,10 @@ export function FloatingPanel({
                   <div style={{ fontSize: '11px', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                     Summary
                   </div>
-                  <div style={{ display: 'flex', gap: '6px' }}>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    {ttsEnabled && summary && pageIntelState !== 'summarizing' && (
+                      <ListenButton text={summary} fontStack={fontStack} />
+                    )}
                     <button
                       onClick={() => setSummaryExpanded((v) => !v)}
                       style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: '#9CA3AF', padding: '0 2px', fontFamily: fontStack }}
@@ -1033,16 +1317,24 @@ export function FloatingPanel({
                   </div>
                 )}
                 {summaryExpanded && summary && (
-                  <div style={{
-                    background: '#F0F4FF',
-                    border: '1px solid #C5CAE9',
-                    borderRadius: '10px',
-                    padding: '10px 12px',
-                    fontSize: '13px',
-                    color: '#1A1A2E',
-                    lineHeight: '1.65',
-                  }}>
-                    {renderMarkdown(summary)}
+                  <div
+                    dir={summaryRtl ? 'rtl' : 'ltr'}
+                    style={{
+                      background: '#F0F4FF',
+                      border: '1px solid #C5CAE9',
+                      borderRadius: '10px',
+                      padding: '10px 12px',
+                      fontSize: '13px',
+                      color: '#1A1A2E',
+                      lineHeight: '1.65',
+                      textAlign: summaryRtl ? 'right' : 'left',
+                    }}
+                  >
+                    {pageIntelState === 'summarizing' ? (
+                      <span style={{ whiteSpace: 'pre-wrap' }}>{summary}{streamCursor}</span>
+                    ) : (
+                      renderMarkdown(summary)
+                    )}
                   </div>
                 )}
               </div>
@@ -1061,7 +1353,7 @@ export function FloatingPanel({
           textAlign: 'center',
           flexShrink: 0,
         }}>
-          Your text is never stored · Press Esc to close
+          Stored locally only when you save vocabulary · Esc to close
         </div>
       )}
     </div>
@@ -1069,54 +1361,6 @@ export function FloatingPanel({
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
-
-function ChatBubble({ message, fontStack }: { message: ChatMessage; fontStack: string }) {
-  const [copied, setCopied] = useState(false);
-  const isUser = message.role === 'user';
-
-  return (
-    <div style={{ display: 'flex', justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
-      <div style={{
-        maxWidth: '85%',
-        background: isUser ? '#5C6BC0' : '#F0F4FF',
-        border: `1px solid ${isUser ? '#5C6BC0' : '#C5CAE9'}`,
-        borderRadius: isUser ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
-        padding: '8px 12px',
-        fontSize: '13px',
-        color: isUser ? 'white' : '#1A1A2E',
-        lineHeight: '1.6',
-        position: 'relative',
-      }}>
-        <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-          {message.content}
-        </div>
-        {!isUser && (
-          <button
-            onClick={() => navigator.clipboard.writeText(message.content).then(() => {
-              setCopied(true);
-              setTimeout(() => setCopied(false), 2000);
-            })}
-            style={{
-              display: 'block',
-              marginTop: '4px',
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: '11px',
-              color: copied ? '#43A047' : '#9CA3AF',
-              padding: '0',
-              fontFamily: fontStack,
-              textAlign: 'right' as const,
-              width: '100%',
-            }}
-          >
-            {copied ? '✓ Copied' : '⎘ Copy'}
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
 
 function ErrorCard({ error, fontStack }: { error: string; fontStack: string }) {
   return (

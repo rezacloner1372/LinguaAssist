@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { getSettings, saveSettings } from '../shared/storage';
+import { getSettings, saveSettings, getVocab, deleteVocabEntry } from '../shared/storage';
 import { sendHealthCheck } from '../shared/messages';
-import type { LLMSettings, HealthStatus } from '../shared/types';
+import { isRTL } from '../shared/textDirection';
+import type { LLMSettings, HealthStatus, VocabEntry } from '../shared/types';
 
 const fontStack = "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif";
 
 export function Settings() {
-  const [settings, setSettings] = useState<LLMSettings>({ baseUrl: '', model: '', apiKey: '' });
+  const [settings, setSettings] = useState<LLMSettings>({ baseUrl: '', model: '', apiKey: '', targetLangA: 'fa', targetLangB: 'en', ttsEnabled: true });
   const [savedApiKey, setSavedApiKey] = useState('');
   const [showApiKey, setShowApiKey] = useState(false);
   const [apiKeyDirty, setApiKeyDirty] = useState(false);
@@ -14,11 +15,16 @@ export function Settings() {
   const [healthStatus, setHealthStatus] = useState<HealthStatus>('idle');
   const [healthInfo, setHealthInfo] = useState<{ time?: number; error?: string }>({});
 
+  // Vocabulary
+  const [vocab, setVocab] = useState<VocabEntry[]>([]);
+  const [vocabSearch, setVocabSearch] = useState('');
+
   useEffect(() => {
     getSettings().then((s) => {
       setSettings(s);
       setSavedApiKey(s.apiKey);
     });
+    getVocab().then(setVocab);
   }, []);
 
   const handleSave = async () => {
@@ -47,6 +53,28 @@ export function Settings() {
     }
   };
 
+  const handleDeleteVocab = async (id: string) => {
+    await deleteVocabEntry(id);
+    setVocab((prev) => prev.filter((e) => e.id !== id));
+  };
+
+  const handleExportCsv = () => {
+    // BOM prefix or Excel renders Persian as mojibake
+    const header = 'Source,Translation,Pair,Page,Date';
+    const escape = (s: string) => `"${s.replace(/"/g, '""').replace(/\n/g, ' ')}"`;
+    const rows = vocab.map((e) =>
+      [escape(e.source), escape(e.translation), escape(e.langPair), escape(e.pageUrl), new Date(e.savedAt).toISOString()].join(','),
+    );
+    const csv = '﻿' + [header, ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'linguaassist-vocabulary.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const displayApiKey = () => {
     if (showApiKey) return settings.apiKey;
     if (!apiKeyDirty && savedApiKey) {
@@ -54,6 +82,13 @@ export function Settings() {
     }
     return settings.apiKey;
   };
+
+  const filteredVocab = vocabSearch.trim()
+    ? vocab.filter((e) => {
+        const q = vocabSearch.trim().toLowerCase();
+        return e.source.toLowerCase().includes(q) || e.translation.toLowerCase().includes(q);
+      })
+    : vocab;
 
   const inputStyle: React.CSSProperties = {
     width: '100%',
@@ -83,6 +118,26 @@ export function Settings() {
     marginTop: '4px',
   };
 
+  const focusBlur = {
+    onFocus: (e: React.FocusEvent<HTMLInputElement>) => {
+      e.currentTarget.style.borderColor = '#5C6BC0';
+      e.currentTarget.style.boxShadow = '0 0 0 3px rgba(92,107,192,0.1)';
+    },
+    onBlur: (e: React.FocusEvent<HTMLInputElement>) => {
+      e.currentTarget.style.borderColor = '#E8EAF6';
+      e.currentTarget.style.boxShadow = 'none';
+    },
+  };
+
+  const cardStyle: React.CSSProperties = {
+    background: 'white',
+    borderRadius: '16px',
+    border: '1px solid #E8EAF6',
+    padding: '24px',
+    marginBottom: '20px',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+  };
+
   return (
     <div style={{
       minHeight: '100vh',
@@ -106,14 +161,7 @@ export function Settings() {
       <div style={{ maxWidth: '640px', margin: '0 auto', padding: '32px 24px' }}>
 
         {/* LLM Configuration Card */}
-        <div style={{
-          background: 'white',
-          borderRadius: '16px',
-          border: '1px solid #E8EAF6',
-          padding: '24px',
-          marginBottom: '20px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-        }}>
+        <div style={cardStyle}>
           <h2 style={{ margin: '0 0 6px', fontSize: '16px', fontWeight: 700, color: '#1A1A2E' }}>
             LLM Configuration
           </h2>
@@ -129,14 +177,7 @@ export function Settings() {
               onChange={(e) => setSettings({ ...settings, baseUrl: e.target.value })}
               placeholder="https://api.openai.com/v1"
               style={inputStyle}
-              onFocus={e => {
-                e.currentTarget.style.borderColor = '#5C6BC0';
-                e.currentTarget.style.boxShadow = '0 0 0 3px rgba(92,107,192,0.1)';
-              }}
-              onBlur={e => {
-                e.currentTarget.style.borderColor = '#E8EAF6';
-                e.currentTarget.style.boxShadow = 'none';
-              }}
+              {...focusBlur}
             />
             <p style={hintStyle}>The base URL of the OpenAI-compatible API endpoint</p>
           </div>
@@ -149,14 +190,7 @@ export function Settings() {
               onChange={(e) => setSettings({ ...settings, model: e.target.value })}
               placeholder="gpt-4o-mini"
               style={inputStyle}
-              onFocus={e => {
-                e.currentTarget.style.borderColor = '#5C6BC0';
-                e.currentTarget.style.boxShadow = '0 0 0 3px rgba(92,107,192,0.1)';
-              }}
-              onBlur={e => {
-                e.currentTarget.style.borderColor = '#E8EAF6';
-                e.currentTarget.style.boxShadow = 'none';
-              }}
+              {...focusBlur}
             />
             <p style={hintStyle}>e.g. gpt-4o-mini, llama3.2, mistral-7b</p>
           </div>
@@ -208,7 +242,40 @@ export function Settings() {
                 {showApiKey ? '🙈' : '👁'}
               </button>
             </div>
-            <p style={hintStyle}>Your API key is stored locally in Chrome extension storage and never shared.</p>
+            <p style={hintStyle}>Stored locally in Chrome extension storage (not synced to your Google account).</p>
+          </div>
+
+          {/* Advanced generation params */}
+          <div style={{ display: 'flex', gap: '12px', marginBottom: '20px' }}>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>Max Context Tokens</label>
+              <input
+                type="number"
+                min={1000}
+                step={500}
+                value={settings.maxContextTokens ?? ''}
+                onChange={(e) => setSettings({ ...settings, maxContextTokens: e.target.value ? Number(e.target.value) : undefined })}
+                placeholder="8000"
+                style={inputStyle}
+                {...focusBlur}
+              />
+              <p style={hintStyle}>Page content budget for summarize/chat</p>
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>Temperature</label>
+              <input
+                type="number"
+                min={0}
+                max={2}
+                step={0.1}
+                value={settings.temperature ?? ''}
+                onChange={(e) => setSettings({ ...settings, temperature: e.target.value ? Number(e.target.value) : undefined })}
+                placeholder="0.1"
+                style={inputStyle}
+                {...focusBlur}
+              />
+              <p style={hintStyle}>0 = deterministic, 2 = creative</p>
+            </div>
           </div>
 
           <button
@@ -233,15 +300,57 @@ export function Settings() {
           </button>
         </div>
 
+        {/* Language & Voice Card */}
+        <div style={cardStyle}>
+          <h2 style={{ margin: '0 0 6px', fontSize: '16px', fontWeight: 700, color: '#1A1A2E' }}>
+            Language Pair & Voice
+          </h2>
+          <p style={{ margin: '0 0 20px', fontSize: '13px', color: '#6B7280' }}>
+            Translate ⇄ auto-detects direction: text in Language A is translated to B and vice versa.
+          </p>
+
+          <div style={{ display: 'flex', gap: '12px', marginBottom: '16px', alignItems: 'flex-end' }}>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>Language A</label>
+              <input
+                type="text"
+                value={settings.targetLangA ?? 'fa'}
+                onChange={(e) => setSettings({ ...settings, targetLangA: e.target.value })}
+                placeholder="fa"
+                style={inputStyle}
+                {...focusBlur}
+              />
+            </div>
+            <div style={{ padding: '0 2px 10px', color: '#9CA3AF', fontSize: '16px' }}>⇄</div>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>Language B</label>
+              <input
+                type="text"
+                value={settings.targetLangB ?? 'en'}
+                onChange={(e) => setSettings({ ...settings, targetLangB: e.target.value })}
+                placeholder="en"
+                style={inputStyle}
+                {...focusBlur}
+              />
+            </div>
+          </div>
+          <p style={{ ...hintStyle, marginBottom: '16px' }}>
+            ISO codes (fa, en, de, fr, es, ar, tr…) or full names. Defaults: fa ⇄ en.
+          </p>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', color: '#374151' }}>
+            <input
+              type="checkbox"
+              checked={settings.ttsEnabled !== false}
+              onChange={(e) => setSettings({ ...settings, ttsEnabled: e.target.checked })}
+              style={{ width: '16px', height: '16px', accentColor: '#5C6BC0' }}
+            />
+            Show 🔊 Listen buttons on results (text-to-speech)
+          </label>
+        </div>
+
         {/* Health Check Card */}
-        <div style={{
-          background: 'white',
-          borderRadius: '16px',
-          border: '1px solid #E8EAF6',
-          padding: '24px',
-          marginBottom: '20px',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-        }}>
+        <div style={cardStyle}>
           <h2 style={{ margin: '0 0 6px', fontSize: '16px', fontWeight: 700, color: '#1A1A2E' }}>
             Connection Health
           </h2>
@@ -321,6 +430,109 @@ export function Settings() {
           )}
         </div>
 
+        {/* Vocabulary Card */}
+        <div style={cardStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+            <h2 style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#1A1A2E' }}>
+              📚 Vocabulary
+            </h2>
+            {vocab.length > 0 && (
+              <button
+                onClick={handleExportCsv}
+                style={{
+                  background: '#5C6BC0',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  padding: '6px 12px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  fontFamily: fontStack,
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#3F51B5')}
+                onMouseLeave={e => (e.currentTarget.style.background = '#5C6BC0')}
+              >
+                ⤓ Export CSV
+              </button>
+            )}
+          </div>
+          <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#6B7280' }}>
+            Translations you save with 📚 in the panel appear here. {vocab.length} {vocab.length === 1 ? 'entry' : 'entries'}.
+          </p>
+
+          {vocab.length > 0 && (
+            <input
+              type="text"
+              value={vocabSearch}
+              onChange={(e) => setVocabSearch(e.target.value)}
+              placeholder="Search vocabulary…"
+              style={{ ...inputStyle, marginBottom: '12px' }}
+              {...focusBlur}
+            />
+          )}
+
+          {vocab.length === 0 ? (
+            <div style={{
+              textAlign: 'center', color: '#9CA3AF', fontSize: '13px', padding: '20px 0',
+              background: '#F8F9FE', borderRadius: '10px', border: '1px solid #E8EAF6',
+            }}>
+              <div style={{ fontSize: '20px', marginBottom: '6px' }}>📚</div>
+              <div>No saved words yet</div>
+              <div style={{ fontSize: '12px', marginTop: '4px' }}>Translate text and click 📚 Save in the panel</div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '320px', overflowY: 'auto' }}>
+              {filteredVocab.map((entry) => (
+                <div
+                  key={entry.id}
+                  style={{
+                    border: '1px solid #E8EAF6',
+                    borderRadius: '10px',
+                    padding: '10px 12px',
+                    background: '#FAFBFF',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        dir={isRTL(entry.source) ? 'rtl' : 'ltr'}
+                        style={{ fontSize: '13px', color: '#374151', fontWeight: 600, textAlign: isRTL(entry.source) ? 'right' : 'left', wordBreak: 'break-word' }}
+                      >
+                        {entry.source.length > 80 ? entry.source.slice(0, 80) + '…' : entry.source}
+                      </div>
+                      <div
+                        dir={isRTL(entry.translation) ? 'rtl' : 'ltr'}
+                        style={{ fontSize: '13px', color: '#1A1A2E', marginTop: '3px', textAlign: isRTL(entry.translation) ? 'right' : 'left', wordBreak: 'break-word' }}
+                      >
+                        {entry.translation.length > 80 ? entry.translation.slice(0, 80) + '…' : entry.translation}
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#9CA3AF', marginTop: '5px' }}>
+                        {entry.langPair} · {new URL(entry.pageUrl).hostname} · {new Date(entry.savedAt).toLocaleDateString()}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleDeleteVocab(entry.id)}
+                      style={{
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        fontSize: '13px', color: '#9CA3AF', padding: '2px 4px', flexShrink: 0,
+                      }}
+                      title="Delete entry"
+                    >
+                      🗑
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {filteredVocab.length === 0 && (
+                <div style={{ textAlign: 'center', color: '#9CA3AF', fontSize: '13px', padding: '12px 0' }}>
+                  No matches for "{vocabSearch}"
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* Privacy card */}
         <div style={{
           background: '#F0F4FF',
@@ -334,15 +546,15 @@ export function Settings() {
           </h3>
           <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: '13px', color: '#374151', lineHeight: '1.7' }}>
             <li>Text is only sent when you explicitly trigger an action.</li>
-            <li>No text is stored by the extension after the response is received.</li>
-            <li>Your API key is stored in Chrome's local extension storage only.</li>
+            <li>Nothing is stored after a response, except vocabulary entries you save explicitly — those stay in local storage only.</li>
+            <li>Your API key is stored in Chrome's local extension storage only (never synced).</li>
             <li>No data is collected or transmitted to LinguaAssist servers.</li>
             <li>All requests go directly from your browser to your configured LLM endpoint.</li>
           </ul>
         </div>
 
         <div style={{ textAlign: 'center', fontSize: '12px', color: '#C4C9E8' }}>
-          LinguaAssist v1.0.0 · Open source · Your AI, your data
+          LinguaAssist v1.1.0 · Open source · Your AI, your data
         </div>
       </div>
     </div>

@@ -2,11 +2,14 @@ import type {
   MessageToBackground,
   MessageToBackgroundHealthCheck,
   MessageToBackgroundPageSummarize,
+  MessageToBackgroundTtsSpeak,
+  MessageToBackgroundTtsStop,
   MessageResponse,
   LLMRequest,
   LLMSettings,
   PageSummarizeRequest,
   StreamMessage,
+  StreamRequest,
   PageChatRequest,
 } from './types';
 
@@ -25,13 +28,23 @@ export function sendPageSummarizeRequest(payload: PageSummarizeRequest): Promise
   return chrome.runtime.sendMessage(message);
 }
 
+export function sendTtsSpeak(payload: { text: string; lang?: string }): Promise<MessageResponse> {
+  const message: MessageToBackgroundTtsSpeak = { type: 'TTS_SPEAK', payload };
+  return chrome.runtime.sendMessage(message);
+}
+
+export function sendTtsStop(): Promise<MessageResponse> {
+  const message: MessageToBackgroundTtsStop = { type: 'TTS_STOP' };
+  return chrome.runtime.sendMessage(message);
+}
+
 /**
- * Stream a chat response via a long-lived port.
+ * Generic streaming request over the 'lingua-stream' port.
  * Calls `onChunk` for each delta, `onDone` when finished, `onError` on failure.
  * Returns a disconnect function to cancel early.
  */
-export function streamPageChat(
-  payload: PageChatRequest,
+export function streamLLMRequest(
+  request: StreamRequest,
   onChunk: (chunk: string) => void,
   onDone: () => void,
   onError: (err: string) => void,
@@ -50,7 +63,20 @@ export function streamPageChat(
     }
   });
 
-  port.postMessage({ type: 'PAGE_CHAT', payload });
+  port.postMessage(request);
 
   return () => port.disconnect();
+}
+
+/**
+ * Stream a chat response via a long-lived port.
+ * Thin wrapper over streamLLMRequest for the page-chat message shape.
+ */
+export function streamPageChat(
+  payload: PageChatRequest,
+  onChunk: (chunk: string) => void,
+  onDone: () => void,
+  onError: (err: string) => void,
+): () => void {
+  return streamLLMRequest({ type: 'PAGE_CHAT', payload }, onChunk, onDone, onError);
 }

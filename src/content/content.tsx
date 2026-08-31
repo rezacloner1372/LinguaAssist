@@ -1,7 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { FloatingPanel } from './FloatingPanel';
-import type { PageContent } from '../shared/types';
+import type { PageContent, PanelState } from '../shared/types';
 
 let shadowHost: HTMLElement | null = null;
 let panelRoot: ReturnType<typeof createRoot> | null = null;
@@ -9,8 +9,13 @@ let triggerBtn: HTMLElement | null = null;
 let triggerTimeout: ReturnType<typeof setTimeout> | null = null;
 let pageFab: HTMLElement | null = null;
 
-// Module-level cache — persists for the lifetime of the page
+// Module-level caches — persist for the lifetime of the page
 let cachedPageContent: PageContent | null = null;
+let panelState: PanelState | null = null;
+
+function updatePersistedState(partial: Partial<PanelState>) {
+  panelState = { ...(panelState ?? { selectedText: '', activeView: 'page', textResult: '', activeTextAction: null, summary: '', chatMessages: [] }), ...partial };
+}
 
 function removeTrigger() {
   if (triggerBtn && triggerBtn.parentNode) {
@@ -41,6 +46,16 @@ function openPanel(text: string, x: number, y: number) {
   removePanel();
   hidePageFab();
 
+  // A new selection invalidates the persisted text result — a stale result
+  // for different input is confusing. Page summary/chat persist regardless.
+  let initialState = panelState;
+  if (initialState && initialState.selectedText && text && initialState.selectedText !== text) {
+    initialState = { ...initialState, textResult: '', activeTextAction: null };
+  }
+  if (text && (!initialState || !initialState.selectedText)) {
+    initialState = { ...(initialState ?? { selectedText: '', activeView: 'page', textResult: '', activeTextAction: null, summary: '', chatMessages: [] }), selectedText: text, activeView: 'text' };
+  }
+
   shadowHost = document.createElement('div');
   shadowHost.id = 'lingua-assist-root';
   shadowHost.style.cssText = `
@@ -68,6 +83,8 @@ function openPanel(text: string, x: number, y: number) {
       onClose={removePanel}
       cachedPageContent={cachedPageContent}
       onPageContentExtracted={(content) => { cachedPageContent = content; }}
+      initialState={initialState}
+      onPersistState={updatePersistedState}
     />
   );
 }
@@ -238,5 +255,8 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Initialize the persistent FAB
-createPageFab();
+// Initialize the persistent FAB — http/https pages only (manifest narrows
+// matches, this guards the runtime edge cases like file://)
+if (location.protocol === 'http:' || location.protocol === 'https:') {
+  createPageFab();
+}
