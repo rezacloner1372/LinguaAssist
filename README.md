@@ -30,12 +30,18 @@
 
 ## Features
 
-- 🔄 **Translate → Persian** — Translate any selected text to Persian (Farsi)
-- 🔄 **Translate → English** — Translate any selected text to English
-- ✏️ **Fix Grammar** — Fix grammar, spelling, punctuation, and clarity
+- 🔄 **Translate ⇄** — Auto-detects direction: Persian → English or English → Persian, with a prompt tuned for natural, native-quality output
+- ⌨️ **Manual Translate** — Type or paste any word, sentence, or paragraph into the panel and translate it — no page selection needed
+- 💡 **Explain** — Clear, concise explanations of selected text with key-term glosses
+- 📋 **Summarize** — Condense selected text into 2–4 bullet points
+- ✏️ **Fix Grammar / Formal / Casual / Draft Reply** — Editing and tone tools that keep the original language
 - 📄 **Read Page** — Extract the main readable content from the current webpage
-- 📋 **Summarize Page** — Generate a structured markdown summary with key points and action items when relevant
+- 🧾 **Summarize Page** — Structured markdown summary with key points and action items when relevant
 - 💬 **Chat with Page** — Ask follow-up questions about the current webpage with streaming responses
+- 🖐 **Draggable panel** — Click and hold the header to move the panel anywhere; it stays where you drop it until you close it
+- 🔊 **Listen (TTS)** — Hear any result read aloud, with automatic Persian/English voice selection
+- 📚 **Vocabulary** — Save translations from the panel and review, search, or export them as CSV
+- ↕️ **RTL-aware rendering** — Persian results automatically display right-to-left
 - 🧠 **Page-aware context handling** — Estimates tokens, truncates oversized content, and reserves budget for chat history and replies
 - 🚀 **Persistent page FAB** — Open page intelligence from any tab even when no text is selected
 - ⚡ Works with any **OpenAI-compatible** API endpoint (OpenAI, Ollama, Together.ai, Groq, and more)
@@ -65,12 +71,21 @@ It introduces:
 
 1. You select text on any webpage.
 2. A floating **✦ LinguaAssist** panel appears near your selection.
-3. In the **Text Actions** tab, pick one of the standard actions:
-   - Translate → Persian
-   - Translate → English
-   - Fix Grammar
-4. The extension sends the selected text to your configured LLM endpoint.
-5. The result appears in the panel and can be copied with one click.
+3. In the **Text Actions** tab, pick one of the actions:
+   - **Translate ⇄** (auto-detects direction)
+   - **Explain**
+   - **Summarize**
+   - **Fix Grammar**
+   - **Formal** / **Casual** rewrites
+   - **Draft Reply**
+4. The extension streams the request to your configured LLM endpoint and the result appears progressively in the panel.
+5. Copy the result, listen to it with 🔊, or save translations to your vocabulary with 📚.
+
+### Manual translate
+
+1. Open the panel (select text or click the **✦ Page** button) and switch to the **⌨️ Translate** tab.
+2. Type or paste any word, sentence, or paragraph — the input box detects direction (RTL/LTR) automatically.
+3. Click **🔄 Translate ⇄** (or press **⌘/Ctrl + Enter**). The result uses the same translation system and streaming format as the Text Actions tab.
 
 ### Page Intelligence
 
@@ -163,10 +178,10 @@ Before using the extension you must point it at an LLM endpoint:
 
 ### Optional advanced behavior
 
-The latest Page Intelligence flow also supports:
-
 - **`maxContextTokens`** — limits how much page content is included in summarize/chat requests
 - **`temperature`** — controls generation randomness for supported providers
+- **Language A / Language B** — the translation pair (defaults to Persian ⇄ English); translation auto-detects direction between them
+- **TTS toggle** — show or hide 🔊 Listen buttons on results
 
 If these values are not configured, LinguaAssist falls back to built-in defaults.
 
@@ -201,12 +216,27 @@ API Key  : <your OpenAI API key>
 2. **Select** a piece of text with your mouse.
 3. A floating **✦ LinguaAssist** panel appears automatically.
 4. Use the **Text Actions** tab to choose:
-   - **Translate → Persian**
-   - **Translate → English**
+   - **Translate ⇄** (auto-detects Persian ⇄ English)
+   - **Explain**
+   - **Summarize**
    - **Fix Grammar**
-5. Wait for the result to appear in the panel.
-6. Click **"⎘ Copy Result"** to copy it to your clipboard.
+   - **Formal** / **Casual**
+   - **Draft Reply**
+5. Wait for the streaming result to finish in the panel.
+6. Click **"⎘ Copy Result"** to copy it, 🔊 to listen, or **📚 Save** (translations) to add it to your vocabulary.
 7. Press **Esc** or click **×** to dismiss the panel.
+
+### Moving the panel
+
+- Click and hold the panel header and drag to move it anywhere on screen.
+- The panel stays where you drop it until you close it; the next time it opens, it appears near your selection again.
+
+### Manual Translate
+
+1. Open the panel from the persistent **✦ Page** button or a text selection.
+2. Switch to the **⌨️ Translate** tab.
+3. Type or paste text (a word, sentence, or paragraph) and click **🔄 Translate ⇄** — or press **⌘/Ctrl + Enter**.
+4. The translation streams in with the same result format, copy, and listen controls as Text Actions.
 
 ### Page Intelligence
 
@@ -235,7 +265,10 @@ LinguaAssist/
 │   │   └── service-worker.ts    # LLM requests, page summarize, and streaming page chat
 │   ├── content/
 │   │   ├── content.tsx          # Content script, selection trigger, page FAB, page content cache
-│   │   ├── FloatingPanel.tsx    # Text actions UI, Page Intel UI, and chat experience
+│   │   ├── FloatingPanel.tsx    # Floating panel: Text Actions, Manual Translate, Page Intel, chat, drag handling
+│   │   ├── ChatView.tsx         # Chat bubble component with TTS support
+│   │   ├── ListenButton.tsx     # 🔊 TTS listen button
+│   │   ├── markdown.tsx         # Lightweight markdown renderer for results
 │   │   ├── pageExtractor.ts     # Main-content extraction from webpages
 │   │   └── tokenUtils.ts        # Token estimation, chunking, and truncation helpers
 │   ├── popup/
@@ -248,7 +281,8 @@ LinguaAssist/
 │   │   └── Settings.tsx         # LLM configuration UI
 │   └── shared/
 │       ├── messages.ts          # Chrome runtime message and streaming helpers
-│       ├── storage.ts           # chrome.storage.sync helpers
+│       ├── storage.ts           # chrome.storage.local helpers (settings, vocabulary)
+│       ├── textDirection.ts     # RTL detection and language-pair labels
 │       ├── theme.ts             # Shared theme tokens
 │       └── types.ts             # Shared TypeScript types for text and page workflows
 ├── manifest.json                # Chrome Extension Manifest V3
@@ -261,9 +295,9 @@ LinguaAssist/
 
 ## Privacy
 
-- Selected text or page content is sent to your LLM **only** when you explicitly trigger a text or page action.
-- No content is stored by the extension after a response is received, aside from in-memory page caching for the current tab session.
-- Your API key is stored in **Chrome extension storage** only.
+- Selected text, manual input, or page content is sent to your LLM **only** when you explicitly trigger a text or page action.
+- Nothing is stored after a response, except vocabulary entries you save explicitly — those stay in local storage only.
+- Your API key is stored in **Chrome extension storage** (`chrome.storage.local`) only.
 - No data is collected or transmitted to LinguaAssist servers.
 - All requests go **directly** from your browser to your configured LLM endpoint.
-- The README-described Page Intelligence features rely on your provider’s handling of data, so review your LLM provider’s privacy policy if needed.
+- Data handling during LLM processing depends on your provider, so review your LLM provider's privacy policy if needed.
