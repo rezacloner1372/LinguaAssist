@@ -1,6 +1,6 @@
 # LinguaAssist Privacy Policy
 
-_Last updated: 2026-09-01_
+_Last updated: 2026-11-08_
 
 ## Summary
 
@@ -17,9 +17,11 @@ LinguaAssist sends data **only when you explicitly trigger an action**, and only
 | Data | When it is sent | Where it goes |
 |------|-----------------|---------------|
 | Text you select on a page | When you click an action (Translate, Explain, Summarize, etc.) | Your configured LLM endpoint |
+| Roughly 10 lines of text before and after your selection | Only when you run **Explain**, so it can use the surrounding context | Your configured LLM endpoint |
 | Text you type or paste into the Translate tab | When you click Translate or press ⌘/Ctrl+Enter | Your configured LLM endpoint |
 | Webpage content | When you use Read Page, Summarize, or Chat with Page | Your configured LLM endpoint |
-| LLM API key | Stored in `chrome.storage.local` on your device | Sent only to your configured endpoint for authentication |
+| Model list request | When you click **Fetch models** in Settings | `GET {your base URL}/models` on your configured endpoint (API key sent as the auth header) |
+| LLM API keys | Stored in `chrome.storage.local` on your device | Sent only to the endpoint of the profile they belong to, for authentication |
 
 The extension never sends data to LinguaAssist developers or any LinguaAssist-operated service.
 
@@ -27,7 +29,8 @@ The extension never sends data to LinguaAssist developers or any LinguaAssist-op
 
 All storage is in your browser's local extension storage (`chrome.storage.local`) on your device:
 
-- **Settings** — your endpoint URL, model, API key, and preferences
+- **Settings** — your connection profiles (endpoint URL, model, API key), per-task routing, language pair, and preferences
+- **Disabled sites** — hostnames where you turned the on-page buttons off
 - **Vocabulary** — translations you explicitly save; removable and exportable at any time
 - **Per-tab session state** — panel content and cached page extraction, kept in memory and cleared when the tab closes
 
@@ -45,6 +48,9 @@ Requests go directly from your browser to your chosen LLM provider. Once content
 | `activeTab` / `scripting` | Show the assistant panel on the page you are viewing |
 | `host_permissions` | The assistant works on any website, and your LLM endpoint can be any host you configure |
 | `tts` | Read results aloud (Listen feature) |
+| `contextMenus` | Add the right-click menu (Translate, Explain, …) for selected text |
+
+The extension also registers an optional keyboard shortcut (Alt+Shift+L by default) that you can rebind or remove at `chrome://extensions/shortcuts`.
 
 ## Changes to this policy
 

@@ -3,7 +3,7 @@
 All notable changes to LinguaAssist are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.2.0] — 2026-11-08
 
 ### Added
 
@@ -11,19 +11,28 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - **Model dropdown** — "Fetch models" loads the model list from the endpoint's `/models` (OpenAI, Ollama, Groq, Together, …); you can still type any name.
 - **Model per task** — route Translate, Explain, Grammar/rewrite, and Page summarize/chat to different profiles (e.g. a cheap model for translation, a stronger one for Explain).
 - **Replace in place** — for selections inside inputs, textareas and rich-text editors, a **⤺ Replace** button writes the result over the selection (Fix Grammar, Formal, Casual, Draft Reply, Translate). It refuses to overwrite if the text changed in the meantime.
-- **Stop / Regenerate** controls for text actions, manual translate, page summary and chat.
-- **Dictionary mode** — translating a single word returns a dictionary-style entry (pronunciation, translations, meaning, examples, synonyms).
+- **Explain uses page context** — about 10 lines before and after the selection are sent to the model so it can explain the line in its real context.
 - **Right-click menu** (Translate, Explain, Summarize, Fix grammar, Formal, Casual, Draft reply) and an **Alt+Shift+L** shortcut (rebind at `chrome://extensions/shortcuts`).
-- **Explain uses page context** — about 10 lines before and after the selection are sent to the model.
-- **⊘ Hide here** button in the panel header turns LinguaAssist off on the current site, with an Undo toast; hidden sites appear as removable chips in Settings → Disabled sites (changes apply instantly).
-- **On-page UI controls** — hide the ✦ Page button, or disable the buttons per site (Settings, or the toolbar popup).
+- **Dictionary mode** — translating a single word returns a dictionary-style entry (pronunciation, translations, meaning, examples, synonyms).
+- **Stop / Regenerate** controls for text actions, manual translate, page summary and chat.
+- **⊘ Hide here** button in the panel header turns LinguaAssist off on the current site, with an Undo toast. Hidden sites appear as removable chips in Settings → Disabled sites (changes apply instantly); the toolbar popup has a matching toggle.
+- Option to hide the floating **✦ Page** button.
+
+### Changed
+
+- New `contextMenus` permission (for the right-click menu) and a `commands` entry for the shortcut.
+- Arabic-script text (Persian, Arabic) is now estimated at ~2 characters per token instead of 4, for more accurate truncation and chat budgeting.
 
 ### Fixed
 
-- Streaming no longer duplicates text after a mid-stream failure, cancelled requests are aborted, and a dropped connection shows an error instead of loading forever.
-- Typing in the panel no longer triggers page keyboard shortcuts.
-- Selections inside inputs/textareas are supported; the page extractor no longer drops "privacy"/"consent" classes or large forms.
-- Reasoning models (o-series, GPT-5) now get `max_completion_tokens` and no custom temperature; Persian/Arabic token estimates are more accurate.
+- Streaming no longer duplicates text after a mid-stream failure; the non-streaming fallback only runs when nothing has streamed yet.
+- Closing the panel or starting a new action now aborts the in-flight request instead of letting it run (and bill) in the background.
+- A dropped connection (worker restarted, extension reloaded) now shows an error instead of leaving the panel loading forever.
+- Typing in the panel no longer triggers page keyboard shortcuts (e.g. GitHub hotkeys).
+- Selections inside inputs/textareas are supported, and an empty selection range no longer throws.
+- The page extractor no longer drops elements whose class contains "privacy" or "consent", or pages wrapped in one large `<form>`; hidden elements are skipped.
+- Reasoning models (o-series, GPT-5) now get `max_completion_tokens` and no custom temperature, instead of failing with a parameter error.
+- `package.json` and the popup now match the manifest version.
 
 ## [1.1.0] — 2026-08-31
 

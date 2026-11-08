@@ -133,7 +133,7 @@ export function Popup() {
         fontSize: '11px',
         color: '#C4C9E8',
       }}>
-        Your text stays private · v1.1.0
+        Your text stays private · v1.2.0
       </div>
     </div>
   );
