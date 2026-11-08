@@ -7,6 +7,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- **Replace in place** — for selections inside inputs, textareas and rich-text editors, a **⤺ Replace** button writes the result over the selection (Fix Grammar, Formal, Casual, Draft Reply, Translate). It refuses to overwrite if the text changed in the meantime.
 - **Stop / Regenerate** controls for text actions, manual translate, page summary and chat.
 - **Dictionary mode** — translating a single word returns a dictionary-style entry (pronunciation, translations, meaning, examples, synonyms).
 - **Right-click menu** (Translate, Explain, Summarize, Fix grammar, Formal, Casual, Draft reply) and an **Alt+Shift+L** shortcut (rebind at `chrome://extensions/shortcuts`).

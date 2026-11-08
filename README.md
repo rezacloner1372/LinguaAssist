@@ -150,6 +150,10 @@ Start Ollama first: `ollama serve`
 
 Select text, right-click and choose **LinguaAssist → Translate / Explain / …** to run an action immediately, or press **Alt+Shift+L** to open the panel (rebind it at `chrome://extensions/shortcuts`). Translating a single word returns a dictionary-style entry. Use **■ Stop** to cancel a response and **↻** to regenerate it.
 
+### Replace in place
+
+When the selection is inside an input, textarea or rich-text editor (Gmail, Notion, …), results from Fix Grammar, Formal, Casual, Draft Reply and Translate show a **⤺ Replace** button that writes the result over your selection. If the text was edited after you selected it, Replace refuses and you can use Copy instead. Explain, Summarize and single-word dictionary results can't be replaced.
+
 ### Hiding the buttons
 
 Turn off the floating ✦ Page button, or disable the buttons on specific sites, in **Settings → On-page UI** — or tick **Hide buttons on this site** in the toolbar popup. The right-click menu and shortcut keep working on disabled sites.

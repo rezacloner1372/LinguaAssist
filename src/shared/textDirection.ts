@@ -25,6 +25,12 @@ export function detectLangTag(text: string): string {
   return isRTL(text) ? 'fa-IR' : 'en-US';
 }
 
+/** A single word (letters, apostrophes, hyphens) — worth a dictionary entry. */
+export function isSingleWord(text: string): boolean {
+  const t = text.trim().replace(/^[\p{P}\p{S}]+|[\p{P}\p{S}]+$/gu, '');
+  return t.length > 0 && t.length <= 40 && /^[\p{L}\p{M}'’-]+$/u.test(t);
+}
+
 /** 'en→fa' style pair label for vocabulary entries. */
 export function langPairLabel(source: string, translation: string): string {
   const from = isRTL(source) ? 'fa' : 'en';

@@ -2,7 +2,8 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import type { Action, SelectionContext, PageContent, ChatMessage, PanelState, VocabEntry, LLMSettings } from '../shared/types';
 import { streamLLMRequest, streamPageChat } from '../shared/messages';
 import { getSettings, saveVocabEntry } from '../shared/storage';
-import { isRTL, langPairLabel } from '../shared/textDirection';
+import { isRTL, langPairLabel, isSingleWord } from '../shared/textDirection';
+import type { ReplaceTarget } from './replaceTarget';
 import { extractPageContent } from './pageExtractor';
 import { renderMarkdown } from './markdown';
 import { ChatBubble } from './ChatView';
@@ -18,6 +19,8 @@ interface Props {
   selectionContext?: SelectionContext;
   /** Run this text action immediately on open (context menu) */
   autoAction?: Action;
+  /** Where the selection lives, if it's editable (enables the Replace button) */
+  replaceTarget?: ReplaceTarget;
   initialState: PanelState | null;
   onPersistState: (partial: Partial<PanelState>) => void;
 }
@@ -57,6 +60,7 @@ export function FloatingPanel({
   onPageContentExtracted,
   selectionContext,
   autoAction,
+  replaceTarget,
   initialState,
   onPersistState,
 }: Props) {
@@ -82,6 +86,7 @@ export function FloatingPanel({
   const [activeTextAction, setActiveTextAction] = useState<Action | null>(initialState?.activeTextAction ?? null);
   const [textCopied, setTextCopied] = useState(false);
   const [vocabSaved, setVocabSaved] = useState(false);
+  const [replaceState, setReplaceState] = useState<'idle' | 'done' | 'failed'>('idle');
 
   // ── Page intelligence state ──
   const [pageIntelState, setPageIntelState] = useState<PageIntelState>(
@@ -198,6 +203,7 @@ export function FloatingPanel({
     setTextError('');
     setTextCopied(false);
     setVocabSaved(false);
+    setReplaceState('idle');
 
     let accumulated = '';
     const disconnect = streamLLMRequest(
@@ -278,6 +284,19 @@ export function FloatingPanel({
       setTimeout(() => setTextCopied(false), 2000);
     });
   }, [textResult]);
+
+  const handleReplace = useCallback(() => {
+    if (!replaceTarget) return;
+    setReplaceState(replaceTarget.apply(textResult) ? 'done' : 'failed');
+  }, [replaceTarget, textResult]);
+
+  // Replacing only makes sense for actions whose output is the new text itself
+  const canReplace =
+    !!replaceTarget &&
+    !!activeTextAction &&
+    activeTextAction !== 'explain' &&
+    activeTextAction !== 'summarize_selection' &&
+    !(TRANSLATE_ACTIONS.has(activeTextAction) && isSingleWord(selectedText)); // dictionary entry, not a drop-in
 
   const handleSaveVocab = useCallback(() => {
     const entry: VocabEntry = {
@@ -977,7 +996,7 @@ export function FloatingPanel({
                     renderMarkdown(textResult)
                   )}
                 </div>
-                <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
                   {textState === 'loading' && (
                     <button onClick={handleTextStop} style={miniBtnStyle} title="Stop generating">■ Stop</button>
                   )}
@@ -1001,6 +1020,20 @@ export function FloatingPanel({
                   >
                     {textCopied ? '✓ Copied!' : '⎘ Copy Result'}
                   </button>
+                  {canReplace && textState === 'success' && (
+                    <button
+                      onClick={handleReplace}
+                      disabled={replaceState === 'done'}
+                      style={{
+                        ...miniBtnStyle,
+                        ...(replaceState === 'done' ? { background: '#43A047', color: 'white', borderColor: '#43A047', cursor: 'default' } : {}),
+                        ...(replaceState === 'failed' ? { color: '#B91C1C', borderColor: '#FECACA' } : {}),
+                      }}
+                      title={replaceState === 'failed' ? 'The text changed or the field is no longer available — use Copy instead' : 'Replace the selected text with this result'}
+                    >
+                      {replaceState === 'done' ? '✓ Replaced' : replaceState === 'failed' ? '⚠ Can’t replace' : '⤺ Replace'}
+                    </button>
+                  )}
                   {activeTextAction && textState === 'success' && (
                     <button onClick={() => handleTextAction(activeTextAction)} style={miniBtnStyle} title="Regenerate">↻</button>
                   )}

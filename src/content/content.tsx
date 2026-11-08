@@ -2,6 +2,8 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { FloatingPanel } from './FloatingPanel';
 import type { Action, PageContent, PanelState, SelectionContext, MessageToContentOpenPanel } from '../shared/types';
+import { isTextField, makeFieldTarget, makeEditableTarget } from './replaceTarget';
+import type { ReplaceTarget } from './replaceTarget';
 import { getSettings, isSiteDisabled, SETTINGS_KEY } from '../shared/storage';
 
 let shadowHost: HTMLElement | null = null;
@@ -71,6 +73,47 @@ function getFieldContext(field: HTMLInputElement | HTMLTextAreaElement, start: n
   return before || after ? { before, after } : undefined;
 }
 
+interface CapturedSelection {
+  text: string;
+  rect: DOMRect;
+  context?: SelectionContext;
+  /** Present when the selection is editable and can be overwritten */
+  replace?: ReplaceTarget;
+}
+
+/**
+ * Snapshot the current selection: text, position, surrounding context and,
+ * for editable selections, a handle to write a result back over it.
+ */
+function captureSelection(): CapturedSelection | null {
+  const selection = window.getSelection();
+  let text = selection?.toString().trim() ?? '';
+  let rect: DOMRect | null = null;
+  let context: SelectionContext | undefined;
+  let replace: ReplaceTarget | undefined;
+
+  // Selections inside <input>/<textarea> have no usable Range rect and may
+  // not appear in getSelection() — fall back to the field itself.
+  const active = document.activeElement;
+  if (isTextField(active)) {
+    const { selectionStart, selectionEnd, value } = active;
+    if (selectionStart !== null && selectionEnd !== null && selectionEnd > selectionStart) {
+      text = value.slice(selectionStart, selectionEnd).trim();
+      rect = active.getBoundingClientRect();
+      context = getFieldContext(active, selectionStart, selectionEnd);
+      replace = makeFieldTarget(active, selectionStart, selectionEnd);
+    }
+  }
+
+  if (!rect && text && selection && selection.rangeCount > 0) {
+    rect = selection.getRangeAt(0).getBoundingClientRect();
+    context = getSelectionContext(selection);
+    replace = makeEditableTarget(selection);
+  }
+
+  return text && rect ? { text, rect, context, replace } : null;
+}
+
 function updatePersistedState(partial: Partial<PanelState>) {
   panelState = { ...(panelState ?? { selectedText: '', activeView: 'page', textResult: '', activeTextAction: null, summary: '', chatMessages: [] }), ...partial };
 }
@@ -104,7 +147,14 @@ function showPageFab() {
   if (pageFab) pageFab.style.display = 'flex';
 }
 
-function openPanel(text: string, x: number, y: number, selectionContext?: SelectionContext, autoAction?: Action) {
+function openPanel(
+  text: string,
+  x: number,
+  y: number,
+  selectionContext?: SelectionContext,
+  autoAction?: Action,
+  replaceTarget?: ReplaceTarget,
+) {
   removeTrigger();
   removePanel();
   hidePageFab();
@@ -158,13 +208,14 @@ function openPanel(text: string, x: number, y: number, selectionContext?: Select
       onPageContentExtracted={(content) => { cachedPageContent = content; }}
       selectionContext={selectionContext}
       autoAction={autoAction}
+      replaceTarget={replaceTarget}
       initialState={initialState}
       onPersistState={updatePersistedState}
     />
   );
 }
 
-function showTrigger(text: string, rect: DOMRect, selectionContext?: SelectionContext) {
+function showTrigger(text: string, rect: DOMRect, selectionContext?: SelectionContext, replaceTarget?: ReplaceTarget) {
   removeTrigger();
 
   triggerBtn = document.createElement('button');
@@ -217,7 +268,7 @@ function showTrigger(text: string, rect: DOMRect, selectionContext?: SelectionCo
     e.stopPropagation();
     const viewportX = rect.right;
     const viewportY = rect.bottom;
-    openPanel(text, viewportX, viewportY, selectionContext);
+    openPanel(text, viewportX, viewportY, selectionContext, undefined, replaceTarget);
   });
 
   document.body.appendChild(triggerBtn);
@@ -299,33 +350,9 @@ document.addEventListener('mouseup', (e) => {
   if (siteDisabled) return;
   if (triggerTimeout) clearTimeout(triggerTimeout);
   triggerTimeout = setTimeout(() => {
-    const selection = window.getSelection();
-    let text = selection?.toString().trim() ?? '';
-    let rect: DOMRect | null = null;
-    let context: SelectionContext | undefined;
-
-    // Selections inside <input>/<textarea> have no usable Range rect and may
-    // not appear in getSelection() — fall back to the field itself.
-    const active = document.activeElement;
-    if (active instanceof HTMLTextAreaElement || (active instanceof HTMLInputElement && /^(text|search|url|email|tel)?$/.test(active.type))) {
-      const { selectionStart, selectionEnd, value } = active;
-      if (selectionStart !== null && selectionEnd !== null && selectionEnd > selectionStart) {
-        text = value.slice(selectionStart, selectionEnd).trim();
-        rect = active.getBoundingClientRect();
-        context = getFieldContext(active, selectionStart, selectionEnd);
-      }
-    }
-
-    if (text.length > 0 && text.length <= 5000) {
-      if (!rect && selection && selection.rangeCount > 0) {
-        rect = selection.getRangeAt(0).getBoundingClientRect();
-        context = getSelectionContext(selection);
-      }
-      if (rect) showTrigger(text, rect, context);
-      else removeTrigger();
-    } else {
-      removeTrigger();
-    }
+    const cap = captureSelection();
+    if (cap && cap.text.length <= 5000) showTrigger(cap.text, cap.rect, cap.context, cap.replace);
+    else removeTrigger();
   }, 200);
 });
 
@@ -375,13 +402,13 @@ chrome.storage.onChanged.addListener((changes, area) => {
 // ─── Context menu / keyboard shortcut (sent by the service worker) ───────────
 
 function openPanelFromCommand(action?: Action, fallbackText?: string) {
-  const selection = window.getSelection();
-  const live = selection?.toString().trim() ?? '';
-  const text = (live || fallbackText || '').trim().slice(0, 5000);
+  const cap = captureSelection();
+  const text = (cap?.text || fallbackText || '').trim().slice(0, 5000);
 
-  if (text && live && selection && selection.rangeCount > 0) {
-    const rect = selection.getRangeAt(0).getBoundingClientRect();
-    openPanel(text, rect.right, rect.bottom, getSelectionContext(selection), action);
+  if (cap && text) {
+    // If the text was truncated to 5000 chars, a result must not overwrite the full selection
+    const replace = cap.text.length <= 5000 ? cap.replace : undefined;
+    openPanel(text, cap.rect.right, cap.rect.bottom, cap.context, action, replace);
   } else {
     // No usable selection geometry — dock near the top-right like the Page button
     const x = Math.max(24, window.innerWidth - 360 - 24);

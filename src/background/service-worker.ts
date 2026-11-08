@@ -1,5 +1,5 @@
 import { getSettings } from '../shared/storage';
-import { detectLangTag } from '../shared/textDirection';
+import { detectLangTag, isSingleWord } from '../shared/textDirection';
 import type {
     MessageToBackground,
     MessageToBackgroundHealthCheck,
@@ -32,12 +32,6 @@ const CHAT_REPLY_MAX_TOKENS = 1000;
 const SYSTEM_PROMPT_OVERHEAD_TOKENS = 200;
 // chrome.tts has a small per-utterance buffer; long Persian text must be chunked
 const TTS_CHUNK_CHARS = 200;
-
-/** A single word (letters, apostrophes, hyphens) — worth a dictionary entry. */
-function isSingleWord(text: string): boolean {
-    const t = text.trim().replace(/^[\p{P}\p{S}]+|[\p{P}\p{S}]+$/gu, '');
-    return t.length > 0 && t.length <= 40 && /^[\p{L}\p{M}'’-]+$/u.test(t);
-}
 
 function getDictionaryPrompt(nameA: string, nameB: string): string {
     return `You are a bilingual dictionary between ${nameA} and ${nameB}. The input is a single word. If it is ${nameA}, define it for a ${nameB} reader; otherwise define it for a ${nameA} reader.
