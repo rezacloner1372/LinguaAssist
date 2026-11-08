@@ -3,7 +3,7 @@ import { estimateTokens } from './tokenUtils';
 
 const SKIP_TAGS = new Set([
   'script', 'style', 'noscript', 'iframe', 'svg', 'canvas',
-  'header', 'footer', 'nav', 'aside', 'form',
+  'header', 'footer', 'nav', 'aside',
 ]);
 
 const SKIP_ROLES = new Set([
@@ -17,7 +17,7 @@ const SKIP_PATTERNS = [
   /\bfooter\b/i,
   /\bheader\b/i,
   /\b(ad|ads|advert(isement)?|sponsored)\b/i,
-  /\b(cookie|gdpr|consent|privacy)-?(banner|bar|notice|popup|modal)?\b/i,
+  /\b(cookie|gdpr|consent|privacy)-?(banner|bar|notice|popup|modal)\b/i,
   /\bpopup\b/i,
   /\boverlay\b/i,
   /\bmodal\b/i,
@@ -40,13 +40,20 @@ function shouldSkipElement(el: Element): boolean {
   const tag = el.tagName.toLowerCase();
   if (SKIP_TAGS.has(tag)) return true;
 
+  // Small forms are UI chrome (search, newsletter); big ones (e.g. ASP.NET
+  // pages wrapped in a single <form>) contain the real content.
+  if (tag === 'form' && (el.textContent?.length ?? 0) < 1500) return true;
+
+  if (el.hasAttribute('hidden')) return true;
+
   const role = el.getAttribute('role') ?? '';
   if (SKIP_ROLES.has(role)) return true;
 
   const ariaHidden = el.getAttribute('aria-hidden');
   if (ariaHidden === 'true') return true;
 
-  const combined = `${el.className ?? ''} ${el.id ?? ''}`.toLowerCase();
+  // getAttribute: className is an SVGAnimatedString on SVG elements
+  const combined = `${el.getAttribute('class') ?? ''} ${el.id ?? ''}`.toLowerCase();
   for (const pattern of SKIP_PATTERNS) {
     if (pattern.test(combined)) return true;
   }

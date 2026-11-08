@@ -100,7 +100,7 @@ function showTrigger(text: string, rect: DOMRect) {
 
   triggerBtn.style.cssText = `
     position: absolute;
-    left: ${Math.min(x, window.innerWidth - 140)}px;
+    left: ${Math.min(x, window.innerWidth + window.scrollX - 140)}px;
     top: ${y}px;
     z-index: 2147483646;
     background: #5C6BC0;
@@ -224,12 +224,26 @@ document.addEventListener('mouseup', (e) => {
   if (triggerTimeout) clearTimeout(triggerTimeout);
   triggerTimeout = setTimeout(() => {
     const selection = window.getSelection();
-    const text = selection?.toString().trim() ?? '';
+    let text = selection?.toString().trim() ?? '';
+    let rect: DOMRect | null = null;
+
+    // Selections inside <input>/<textarea> have no usable Range rect and may
+    // not appear in getSelection() — fall back to the field itself.
+    const active = document.activeElement;
+    if (active instanceof HTMLTextAreaElement || (active instanceof HTMLInputElement && /^(text|search|url|email|tel)?$/.test(active.type))) {
+      const { selectionStart, selectionEnd, value } = active;
+      if (selectionStart !== null && selectionEnd !== null && selectionEnd > selectionStart) {
+        text = value.slice(selectionStart, selectionEnd).trim();
+        rect = active.getBoundingClientRect();
+      }
+    }
 
     if (text.length > 0 && text.length <= 5000) {
-      const range = selection!.getRangeAt(0);
-      const rect = range.getBoundingClientRect();
-      showTrigger(text, rect);
+      if (!rect && selection && selection.rangeCount > 0) {
+        rect = selection.getRangeAt(0).getBoundingClientRect();
+      }
+      if (rect) showTrigger(text, rect);
+      else removeTrigger();
     } else {
       removeTrigger();
     }

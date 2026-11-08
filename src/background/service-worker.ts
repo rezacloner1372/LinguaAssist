@@ -14,7 +14,7 @@ import type {
     PageSummarizeRequest,
     StreamRequest,
 } from '../shared/types';
-import { truncateToTokens } from '../content/tokenUtils';
+import { truncateToTokens, estimateTokens } from '../content/tokenUtils';
 
 type IncomingMessage =
     | MessageToBackground
@@ -112,6 +112,45 @@ function buildAuthHeaders(settings: LLMSettings): Record<string, string> {
     return headers;
 }
 
+/** Reasoning models (o-series, GPT-5) reject `max_tokens` and custom `temperature`. */
+function isReasoningModel(model: string): boolean {
+    return /^(o\d|gpt-5)/i.test(model.trim());
+}
+
+function chatUrl(settings: LLMSettings): string {
+    return settings.baseUrl.replace(/\/$/, '') + '/chat/completions';
+}
+
+interface ChatBodyOptions {
+    messages: { role: string; content: string }[];
+    /** Omit to send the absolute minimal payload (health checks) */
+    maxTokens?: number;
+    defaultTemperature?: number;
+    stream?: boolean;
+}
+
+function buildChatBody(settings: LLMSettings, opts: ChatBodyOptions): string {
+    const body: Record<string, unknown> = { model: settings.model, messages: opts.messages };
+    if (opts.maxTokens !== undefined) {
+        if (isReasoningModel(settings.model)) {
+            body.max_completion_tokens = opts.maxTokens;
+        } else {
+            // Float, not integer 0 — some gateways reject integer 0
+            body.temperature = settings.temperature ?? opts.defaultTemperature ?? 0.3;
+            body.max_tokens = opts.maxTokens;
+        }
+    }
+    if (opts.stream) body.stream = true;
+    return JSON.stringify(body);
+}
+
+async function throwIfNotOk(response: Response): Promise<void> {
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+}
+
 interface CallLLMOptions {
     systemPrompt: string;
     userText: string;
@@ -122,38 +161,14 @@ interface CallLLMOptions {
 
 async function callLLM(settings: LLMSettings, options: CallLLMOptions): Promise<string> {
     const { systemPrompt, userText, includeOptionalParams = true, maxTokens } = options;
-
-    const url = settings.baseUrl.replace(/\/$/, '') + '/chat/completions';
-
-    // Build minimal body — only add optional params for real LLM calls, not health checks
-    const body: Record<string, unknown> = {
-        model: settings.model,
-        messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userText },
-        ],
-    };
-
-    if (includeOptionalParams) {
-        body.temperature = settings.temperature ?? 0.1; // Use float, not integer 0 — some gateways reject integer 0
-        body.max_tokens = maxTokens ?? 2048;
-    }
-
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: buildAuthHeaders(settings),
-        body: JSON.stringify(body),
-    });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-    }
-
-    const data = await response.json();
-    const content = data?.choices?.[0]?.message?.content;
-    if (!content) throw new Error('Empty response from LLM');
-    return content.trim();
+    return callLLMWithHistory(
+        settings,
+        systemPrompt,
+        [],
+        userText,
+        includeOptionalParams ? (maxTokens ?? 2048) : null,
+        0.1,
+    );
 }
 
 async function callLLMWithHistory(
@@ -161,31 +176,21 @@ async function callLLMWithHistory(
     systemPrompt: string,
     history: ChatMessage[],
     userMessage: string,
-    maxTokens = 1000,
+    maxTokens: number | null = 1000, // null = minimal payload (health check)
+    defaultTemperature = 0.3,
 ): Promise<string> {
-    const url = settings.baseUrl.replace(/\/$/, '') + '/chat/completions';
-
     const messages = [
         { role: 'system', content: systemPrompt },
         ...history.map((m) => ({ role: m.role, content: m.content })),
         { role: 'user', content: userMessage },
     ];
 
-    const response = await fetch(url, {
+    const response = await fetch(chatUrl(settings), {
         method: 'POST',
         headers: buildAuthHeaders(settings),
-        body: JSON.stringify({
-            model: settings.model,
-            messages,
-            temperature: settings.temperature ?? 0.3,
-            max_tokens: maxTokens,
-        }),
+        body: buildChatBody(settings, { messages, maxTokens: maxTokens ?? undefined, defaultTemperature }),
     });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-    }
+    await throwIfNotOk(response);
 
     const data = await response.json();
     const content = data?.choices?.[0]?.message?.content;
@@ -193,74 +198,103 @@ async function callLLMWithHistory(
     return content.trim();
 }
 
+/** Parse one SSE line; returns the content delta, or null if there is none. */
+function parseSseLine(line: string): string | null {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith('data:')) return null;
+    const jsonStr = trimmed.slice(5).trim();
+    if (!jsonStr || jsonStr === '[DONE]') return null;
+    try {
+        return JSON.parse(jsonStr)?.choices?.[0]?.delta?.content || null;
+    } catch {
+        return null; // malformed SSE line — skip
+    }
+}
+
 /**
- * Stream an LLM completion over a port. With an empty history and
- * `userMessage` as the raw input, this doubles as a plain streaming call.
+ * Stream an LLM completion over a port. Aborts the HTTP request when the
+ * panel disconnects, and only falls back to a non-streaming call when no
+ * chunk has been delivered yet (a fallback after partial output would
+ * duplicate text in the UI).
  */
-async function streamLLMWithHistory(
+async function streamWithFallback(
+    port: chrome.runtime.Port,
     settings: LLMSettings,
     systemPrompt: string,
     history: ChatMessage[],
     userMessage: string,
     maxTokens: number,
-    port: chrome.runtime.Port,
 ): Promise<void> {
-    const url = settings.baseUrl.replace(/\/$/, '') + '/chat/completions';
+    const controller = new AbortController();
+    let connected = true;
+    port.onDisconnect.addListener(() => {
+        connected = false;
+        controller.abort();
+    });
+    const send = (msg: unknown) => {
+        if (!connected) return;
+        try {
+            port.postMessage(msg);
+        } catch {
+            connected = false;
+        }
+    };
 
     const messages = [
         { role: 'system', content: systemPrompt },
         ...history.map((m) => ({ role: m.role, content: m.content })),
         { role: 'user', content: userMessage },
     ];
+    let chunksSent = 0;
 
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: buildAuthHeaders(settings),
-        body: JSON.stringify({
-            model: settings.model,
-            messages,
-            temperature: settings.temperature ?? 0.3,
-            max_tokens: maxTokens,
-            stream: true,
-        }),
-    });
+    try {
+        const response = await fetch(chatUrl(settings), {
+            method: 'POST',
+            headers: buildAuthHeaders(settings),
+            body: buildChatBody(settings, { messages, maxTokens, stream: true }),
+            signal: controller.signal,
+        });
+        await throwIfNotOk(response);
+        if (!response.body) throw new Error('No response body for streaming');
 
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-    }
-
-    if (!response.body) throw new Error('No response body for streaming');
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        const lines = buffer.split('\n');
-        buffer = lines.pop() ?? '';
-
-        for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed.startsWith('data:')) continue;
-            const jsonStr = trimmed.slice(5).trim();
-            if (jsonStr === '[DONE]') continue;
-            try {
-                const parsed = JSON.parse(jsonStr);
-                const chunk = parsed?.choices?.[0]?.delta?.content;
-                if (chunk) port.postMessage({ type: 'CHUNK', content: chunk });
-            } catch {
-                // malformed SSE line — skip
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        const emit = (line: string) => {
+            const chunk = parseSseLine(line);
+            if (chunk) {
+                chunksSent++;
+                send({ type: 'CHUNK', content: chunk });
             }
+        };
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() ?? '';
+            lines.forEach(emit);
+        }
+        if (buffer) emit(buffer); // flush a final line with no trailing newline
+
+        send({ type: 'DONE' });
+    } catch (err: unknown) {
+        if (!connected) return; // user cancelled — nothing to report or retry
+
+        if (chunksSent > 0) {
+            // Partial output already shown; surface the error rather than duplicating text
+            send({ type: 'ERROR', error: err instanceof Error ? err.message : String(err) });
+            return;
+        }
+        try {
+            const result = await callLLMWithHistory(settings, systemPrompt, history, userMessage, maxTokens);
+            send({ type: 'CHUNK', content: result });
+            send({ type: 'DONE' });
+        } catch (fallbackErr: unknown) {
+            send({ type: 'ERROR', error: fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr) });
         }
     }
-
-    port.postMessage({ type: 'DONE' });
 }
 
 // ─── TTS ─────────────────────────────────────────────────────────────────────
@@ -393,20 +427,7 @@ async function handleTextActionStream(payload: LLMRequest, port: chrome.runtime.
         port.postMessage({ type: 'ERROR', error: 'LLM not configured. Please open Settings.' });
         return;
     }
-    const systemPrompt = getSystemPrompt(payload.action, settings);
-    try {
-        await streamLLMWithHistory(settings, systemPrompt, [], payload.text, 2048, port);
-    } catch {
-        // Fallback to non-streaming if streaming fails
-        try {
-            const result = await callLLM(settings, { systemPrompt, userText: payload.text, includeOptionalParams: true });
-            port.postMessage({ type: 'CHUNK', content: result });
-            port.postMessage({ type: 'DONE' });
-        } catch (fallbackErr: unknown) {
-            const message = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
-            port.postMessage({ type: 'ERROR', error: message });
-        }
-    }
+    await streamWithFallback(port, settings, getSystemPrompt(payload.action, settings), [], payload.text, 2048);
 }
 
 async function handlePageSummarizeStream(payload: PageSummarizeRequest, port: chrome.runtime.Port): Promise<void> {
@@ -417,25 +438,8 @@ async function handlePageSummarizeStream(payload: PageSummarizeRequest, port: ch
     }
     const maxContext = settings.maxContextTokens ?? DEFAULT_MAX_CONTEXT_TOKENS;
     const truncated = truncateToTokens(payload.pageContent.content, maxContext - 500);
-    const systemPrompt = getSummarizeSystemPrompt();
     const userText = `Title: ${payload.pageContent.title}\n\n${truncated}`;
-    try {
-        await streamLLMWithHistory(settings, systemPrompt, [], userText, SUMMARY_MAX_TOKENS, port);
-    } catch {
-        try {
-            const result = await callLLM(settings, {
-                systemPrompt,
-                userText,
-                includeOptionalParams: true,
-                maxTokens: SUMMARY_MAX_TOKENS,
-            });
-            port.postMessage({ type: 'CHUNK', content: result });
-            port.postMessage({ type: 'DONE' });
-        } catch (fallbackErr: unknown) {
-            const message = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
-            port.postMessage({ type: 'ERROR', error: message });
-        }
-    }
+    await streamWithFallback(port, settings, getSummarizeSystemPrompt(), [], userText, SUMMARY_MAX_TOKENS);
 }
 
 async function handlePageChatStream(payload: PageChatRequest, port: chrome.runtime.Port): Promise<void> {
@@ -449,45 +453,11 @@ async function handlePageChatStream(payload: PageChatRequest, port: chrome.runti
 
     const maxContext = settings.maxContextTokens ?? DEFAULT_MAX_CONTEXT_TOKENS;
     // Reserve tokens for conversation history and the reply
-    const historyTokens = conversationHistory.reduce(
-        (sum, m) => sum + Math.ceil(m.content.length / 4),
-        0,
-    );
+    const historyTokens = conversationHistory.reduce((sum, m) => sum + estimateTokens(m.content), 0);
     const contentBudget = Math.max(1000, maxContext - historyTokens - CHAT_REPLY_MAX_TOKENS - SYSTEM_PROMPT_OVERHEAD_TOKENS);
 
-    const systemPrompt = buildChatSystemPrompt(
-        pageContent.title,
-        pageContent.url,
-        pageContent.content,
-        contentBudget,
-    );
-
-    try {
-        await streamLLMWithHistory(
-            settings,
-            systemPrompt,
-            conversationHistory,
-            userMessage,
-            CHAT_REPLY_MAX_TOKENS,
-            port,
-        );
-    } catch {
-        // Fallback to non-streaming if streaming fails
-        try {
-            const result = await callLLMWithHistory(
-                settings,
-                systemPrompt,
-                conversationHistory,
-                userMessage,
-                CHAT_REPLY_MAX_TOKENS,
-            );
-            port.postMessage({ type: 'CHUNK', content: result });
-            port.postMessage({ type: 'DONE' });
-        } catch (fallbackErr: unknown) {
-            const message = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
-            port.postMessage({ type: 'ERROR', error: message });
-        }
-    }
+    const systemPrompt = buildChatSystemPrompt(pageContent.title, pageContent.url, pageContent.content, contentBudget);
+    await streamWithFallback(port, settings, systemPrompt, conversationHistory, userMessage, CHAT_REPLY_MAX_TOKENS);
 }
 
 chrome.runtime.onConnect.addListener((port) => {

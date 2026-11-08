@@ -51,21 +51,42 @@ export function streamLLMRequest(
 ): () => void {
   const port = chrome.runtime.connect({ name: 'lingua-stream' });
 
-  port.onMessage.addListener((msg: StreamMessage) => {
-    if (msg.type === 'CHUNK') onChunk(msg.content);
-    else if (msg.type === 'DONE') onDone();
-    else if (msg.type === 'ERROR') onError(msg.error);
-  });
+  // `settled` guards against double callbacks and against reporting a
+  // disconnect we caused ourselves (cancel) or one that follows DONE/ERROR.
+  let settled = false;
 
-  port.onDisconnect.addListener(() => {
-    if (chrome.runtime.lastError) {
-      onError(chrome.runtime.lastError.message ?? 'Port disconnected unexpectedly.');
+  port.onMessage.addListener((msg: StreamMessage) => {
+    if (settled) return;
+    if (msg.type === 'CHUNK') {
+      onChunk(msg.content);
+    } else if (msg.type === 'DONE') {
+      settled = true;
+      onDone();
+    } else if (msg.type === 'ERROR') {
+      settled = true;
+      onError(msg.error);
     }
   });
 
-  port.postMessage(request);
+  // The worker can be killed or the extension reloaded mid-stream; without
+  // this the UI would stay in "loading" forever.
+  port.onDisconnect.addListener(() => {
+    if (settled) return;
+    settled = true;
+    onError(chrome.runtime.lastError?.message ?? 'Connection to the extension was lost. Please try again.');
+  });
 
-  return () => port.disconnect();
+  try {
+    port.postMessage(request);
+  } catch (err: unknown) {
+    settled = true;
+    onError(err instanceof Error ? err.message : String(err));
+  }
+
+  return () => {
+    settled = true;
+    port.disconnect();
+  };
 }
 
 /**
