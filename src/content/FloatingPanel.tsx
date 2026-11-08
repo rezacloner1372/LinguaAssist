@@ -16,6 +16,8 @@ interface Props {
   cachedPageContent: PageContent | null;
   onPageContentExtracted: (content: PageContent) => void;
   selectionContext?: SelectionContext;
+  /** Run this text action immediately on open (context menu) */
+  autoAction?: Action;
   initialState: PanelState | null;
   onPersistState: (partial: Partial<PanelState>) => void;
 }
@@ -54,6 +56,7 @@ export function FloatingPanel({
   cachedPageContent,
   onPageContentExtracted,
   selectionContext,
+  autoAction,
   initialState,
   onPersistState,
 }: Props) {
@@ -291,6 +294,29 @@ export function FloatingPanel({
     });
   }, [selectedText, textResult]);
 
+  // ── Stop in-flight streams (keep whatever has streamed so far) ──
+  const handleTextStop = useCallback(() => {
+    textDisconnectRef.current?.();
+    textDisconnectRef.current = null;
+    setTextState(textResult ? 'success' : 'idle');
+  }, [textResult]);
+
+  const handleManualStop = useCallback(() => {
+    manualDisconnectRef.current?.();
+    manualDisconnectRef.current = null;
+    setManualState(manualResult ? 'success' : 'idle');
+  }, [manualResult]);
+
+  // Run the action requested by the context menu once, on first mount
+  const autoRan = useRef(false);
+  useEffect(() => {
+    if (autoAction && hasText && !autoRan.current) {
+      autoRan.current = true;
+      setActiveView('text');
+      handleTextAction(autoAction);
+    }
+  }, [autoAction, hasText, handleTextAction]);
+
   // ── Page extraction ──
   const handleReadPage = useCallback(async () => {
     setPageIntelState('extracting');
@@ -354,6 +380,12 @@ export function FloatingPanel({
     );
     summaryDisconnectRef.current = disconnect;
   }, [pageContent, onPageContentExtracted]);
+
+  const handleSummaryStop = useCallback(() => {
+    summaryDisconnectRef.current?.();
+    summaryDisconnectRef.current = null;
+    setPageIntelState(pageContent ? 'extracted' : 'idle');
+  }, [pageContent]);
 
   // ── Chat ──
   const handleSendChat = useCallback(() => {
@@ -423,6 +455,17 @@ export function FloatingPanel({
     setChatError('');
   }, []);
 
+  const handleChatStop = useCallback(() => {
+    disconnectRef.current?.();
+    disconnectRef.current = null;
+    // Keep the partial answer so the conversation stays coherent
+    if (streamingContent) {
+      setChatMessages((prev) => [...prev, { role: 'assistant', content: streamingContent, timestamp: Date.now() }]);
+    }
+    setStreamingContent('');
+    setChatSending(false);
+  }, [streamingContent]);
+
   const handleOpenChat = useCallback(async () => {
     // Ensure page content is extracted before opening chat
     if (!pageContent) {
@@ -468,6 +511,19 @@ export function FloatingPanel({
     opacity: disabled && !active ? 0.5 : 1,
     width: '100%',
   });
+
+  const miniBtnStyle: React.CSSProperties = {
+    padding: '8px 12px',
+    background: '#FFFFFF',
+    color: '#5C6BC0',
+    border: '1px solid #C5CAE9',
+    borderRadius: '10px',
+    fontSize: '13px',
+    fontWeight: 500,
+    cursor: 'pointer',
+    fontFamily: fontStack,
+    flexShrink: 0,
+  };
 
   const actionHover = {
     onMouseEnter: (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -807,6 +863,15 @@ export function FloatingPanel({
                 onFocus={e => (e.currentTarget.style.borderColor = '#5C6BC0')}
                 onBlur={e => (e.currentTarget.style.borderColor = '#E8EAF6')}
               />
+              {chatSending ? (
+                <button
+                  onClick={handleChatStop}
+                  style={{ ...miniBtnStyle, padding: '8px 12px', fontSize: '14px' }}
+                  title="Stop generating"
+                >
+                  ■
+                </button>
+              ) : (
               <button
                 onClick={handleSendChat}
                 disabled={chatSending || !chatInput.trim()}
@@ -828,6 +893,7 @@ export function FloatingPanel({
               >
                 ➤
               </button>
+              )}
             </div>
           </div>
         </div>
@@ -912,6 +978,9 @@ export function FloatingPanel({
                   )}
                 </div>
                 <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
+                  {textState === 'loading' && (
+                    <button onClick={handleTextStop} style={miniBtnStyle} title="Stop generating">■ Stop</button>
+                  )}
                   <button
                     onClick={handleTextCopy}
                     disabled={textState === 'loading'}
@@ -932,6 +1001,9 @@ export function FloatingPanel({
                   >
                     {textCopied ? '✓ Copied!' : '⎘ Copy Result'}
                   </button>
+                  {activeTextAction && textState === 'success' && (
+                    <button onClick={() => handleTextAction(activeTextAction)} style={miniBtnStyle} title="Regenerate">↻</button>
+                  )}
                   {activeTextAction && TRANSLATE_ACTIONS.has(activeTextAction) && textState === 'success' && (
                     <button
                       onClick={handleSaveVocab}
@@ -972,6 +1044,7 @@ export function FloatingPanel({
                   borderRadius: '50%', animation: 'linguaSpin 0.7s linear infinite', marginBottom: '7px',
                 }} />
                 <div>Thinking…</div>
+                <button onClick={handleTextStop} style={{ ...miniBtnStyle, marginTop: '8px' }}>■ Stop</button>
               </div>
             )}
           </div>
@@ -1080,6 +1153,9 @@ export function FloatingPanel({
                   )}
                 </div>
                 <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
+                  {manualState === 'loading' && (
+                    <button onClick={handleManualStop} style={miniBtnStyle} title="Stop generating">■ Stop</button>
+                  )}
                   <button
                     onClick={handleManualCopy}
                     disabled={manualState === 'loading'}
@@ -1100,6 +1176,9 @@ export function FloatingPanel({
                   >
                     {manualCopied ? '✓ Copied!' : '⎘ Copy Result'}
                   </button>
+                  {manualState === 'success' && (
+                    <button onClick={handleManualTranslate} style={miniBtnStyle} title="Regenerate">↻</button>
+                  )}
                   {ttsEnabled && manualState === 'success' && manualResult && (
                     <div style={{
                       display: 'flex', alignItems: 'center', padding: '0 10px',
@@ -1119,6 +1198,7 @@ export function FloatingPanel({
                   borderRadius: '50%', animation: 'linguaSpin 0.7s linear infinite', marginBottom: '7px',
                 }} />
                 <div>Thinking…</div>
+                <button onClick={handleManualStop} style={{ ...miniBtnStyle, marginTop: '8px' }}>■ Stop</button>
               </div>
             )}
           </div>
@@ -1275,6 +1355,15 @@ export function FloatingPanel({
                     Summary
                   </div>
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    {pageIntelState === 'summarizing' && (
+                      <button
+                        onClick={handleSummaryStop}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '12px', color: '#5C6BC0', padding: '0 2px', fontFamily: fontStack }}
+                        title="Stop generating"
+                      >
+                        ■ Stop
+                      </button>
+                    )}
                     {ttsEnabled && summary && pageIntelState !== 'summarizing' && (
                       <ListenButton text={summary} fontStack={fontStack} />
                     )}

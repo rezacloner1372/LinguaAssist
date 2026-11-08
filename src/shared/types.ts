@@ -22,6 +22,10 @@ export interface LLMSettings {
   targetLangB?: string;
   /** Show 🔊 Listen buttons on results (default true) */
   ttsEnabled?: boolean;
+  /** Show the floating ✦ Page button (default true) */
+  showPageButton?: boolean;
+  /** Hostnames where LinguaAssist's on-page UI (trigger + Page button) is off */
+  disabledSites?: string[];
 }
 
 export interface PageContent {
@@ -117,6 +121,15 @@ export interface MessageToBackgroundTtsSpeak {
 
 export interface MessageToBackgroundTtsStop {
   type: 'TTS_STOP';
+}
+
+/** Background → content script: open the panel (context menu / shortcut) */
+export interface MessageToContentOpenPanel {
+  type: 'OPEN_PANEL';
+  /** Run this action immediately on the selection */
+  action?: Action;
+  /** Selection text from the context menu, used if the live selection is gone */
+  selectionText?: string;
 }
 
 export interface MessageResponse {

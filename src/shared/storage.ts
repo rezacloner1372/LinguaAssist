@@ -1,6 +1,6 @@
 import type { LLMSettings, VocabEntry } from './types';
 
-const SETTINGS_KEY = 'lingua_settings';
+export const SETTINGS_KEY = 'lingua_settings';
 const VOCAB_KEY = 'lingua_vocab';
 const VOCAB_MAX_ENTRIES = 1000;
 
@@ -11,6 +11,8 @@ const DEFAULT_SETTINGS: LLMSettings = {
   targetLangA: 'fa',
   targetLangB: 'en',
   ttsEnabled: true,
+  showPageButton: true,
+  disabledSites: [],
 };
 
 /**
@@ -71,5 +73,26 @@ export async function deleteVocabEntry(id: string): Promise<void> {
   const vocab = await getVocab();
   return new Promise((resolve) => {
     chrome.storage.local.set({ [VOCAB_KEY]: vocab.filter((e) => e.id !== id) }, resolve);
+  });
+}
+
+// ─── Per-site disable ────────────────────────────────────────────────────────
+
+/** Normalize user input ("https://www.Example.com/path") to a bare hostname. */
+export function normalizeSite(input: string): string {
+  return input
+    .trim()
+    .toLowerCase()
+    .replace(/^[a-z]+:\/\//, '')
+    .replace(/^www\./, '')
+    .replace(/[/?#].*$/, '');
+}
+
+/** True if `hostname` equals a disabled site or is a subdomain of one. */
+export function isSiteDisabled(settings: LLMSettings, hostname: string): boolean {
+  const host = normalizeSite(hostname);
+  return (settings.disabledSites ?? []).some((entry) => {
+    const site = normalizeSite(entry);
+    return site !== '' && (host === site || host.endsWith('.' + site));
   });
 }

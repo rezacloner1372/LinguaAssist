@@ -8,6 +8,8 @@ import type {
     MessageToBackgroundTtsStop,
     MessageResponse,
     LLMSettings,
+    Action,
+    MessageToContentOpenPanel,
     PageChatRequest,
     ChatMessage,
     LLMRequest,
@@ -31,7 +33,29 @@ const SYSTEM_PROMPT_OVERHEAD_TOKENS = 200;
 // chrome.tts has a small per-utterance buffer; long Persian text must be chunked
 const TTS_CHUNK_CHARS = 200;
 
-function getSystemPrompt(action: string, settings?: LLMSettings): string {
+/** A single word (letters, apostrophes, hyphens) — worth a dictionary entry. */
+function isSingleWord(text: string): boolean {
+    const t = text.trim().replace(/^[\p{P}\p{S}]+|[\p{P}\p{S}]+$/gu, '');
+    return t.length > 0 && t.length <= 40 && /^[\p{L}\p{M}'’-]+$/u.test(t);
+}
+
+function getDictionaryPrompt(nameA: string, nameB: string): string {
+    return `You are a bilingual dictionary between ${nameA} and ${nameB}. The input is a single word. If it is ${nameA}, define it for a ${nameB} reader; otherwise define it for a ${nameA} reader.
+
+Reply in markdown using exactly this layout (omit a line only if it truly does not apply):
+
+**<the word>** · <part of speech> · <pronunciation: IPA for English words, a Latin transliteration for Persian words>
+**Translation:** the 1–3 most common equivalents in the other language, most common first
+**Meaning:** one short sentence in the word's own language
+**Examples:**
+- an example sentence using the word, then its translation in parentheses
+- a second example showing a different sense or register
+**Synonyms:** 2–4 synonyms in the word's own language
+
+Rules: be accurate and concise; if the word has clearly different senses, list the top two with their own translation. Return ONLY the entry.`;
+}
+
+function getSystemPrompt(action: string, settings?: LLMSettings, text?: string): string {
     const langA = settings?.targetLangA ?? 'fa';
     const langB = settings?.targetLangB ?? 'en';
     const nameA = langA === 'fa' ? 'Persian (Farsi)' : langA;
@@ -41,6 +65,9 @@ function getSystemPrompt(action: string, settings?: LLMSettings): string {
         case 'translate':
         case 'translate_to_persian':
         case 'translate_to_english':
+            if (action === 'translate' && text && isSingleWord(text)) {
+                return getDictionaryPrompt(nameA, nameB);
+            }
             return `You are an expert professional translator between ${nameA} and ${nameB}. If the input is primarily ${nameA}, translate it to ${nameB}; otherwise translate it to ${nameA}.
 
 Rules:
@@ -354,7 +381,7 @@ chrome.runtime.onMessage.addListener(
                     sendResponse({ success: false, error: 'LLM not configured. Please open Settings.' });
                     return;
                 }
-                const systemPrompt = getSystemPrompt(action, settings);
+                const systemPrompt = getSystemPrompt(action, settings, message.payload.text);
                 callLLM(settings, { systemPrompt, userText: buildUserText(message.payload), includeOptionalParams: true })
                     .then((result) => sendResponse({ success: true, data: result }))
                     .catch((err) => sendResponse({ success: false, error: err.message }));
@@ -438,7 +465,7 @@ async function handleTextActionStream(payload: LLMRequest, port: chrome.runtime.
         port.postMessage({ type: 'ERROR', error: 'LLM not configured. Please open Settings.' });
         return;
     }
-    await streamWithFallback(port, settings, getSystemPrompt(payload.action, settings), [], buildUserText(payload), 2048);
+    await streamWithFallback(port, settings, getSystemPrompt(payload.action, settings, payload.text), [], buildUserText(payload), 2048);
 }
 
 async function handlePageSummarizeStream(payload: PageSummarizeRequest, port: chrome.runtime.Port): Promise<void> {
@@ -483,4 +510,51 @@ chrome.runtime.onConnect.addListener((port) => {
             void handlePageChatStream(msg.payload, port);
         }
     });
+});
+
+// ─── Context menu + keyboard shortcut ────────────────────────────────────────
+
+const MENU_PREFIX = 'lingua:';
+const MENU_ACTIONS: { id: Action; title: string }[] = [
+    { id: 'translate', title: 'Translate' },
+    { id: 'explain', title: 'Explain (with context)' },
+    { id: 'summarize_selection', title: 'Summarize' },
+    { id: 'fix_grammar', title: 'Fix grammar' },
+    { id: 'rewrite_formal', title: 'Rewrite — formal' },
+    { id: 'rewrite_casual', title: 'Rewrite — casual' },
+    { id: 'reply_draft', title: 'Draft reply' },
+];
+
+chrome.runtime.onInstalled.addListener(() => {
+    chrome.contextMenus.removeAll(() => {
+        chrome.contextMenus.create({ id: `${MENU_PREFIX}root`, title: 'LinguaAssist', contexts: ['selection'] });
+        for (const { id, title } of MENU_ACTIONS) {
+            chrome.contextMenus.create({ id: `${MENU_PREFIX}${id}`, parentId: `${MENU_PREFIX}root`, title, contexts: ['selection'] });
+        }
+        chrome.contextMenus.create({ id: `${MENU_PREFIX}open`, title: 'Open LinguaAssist panel', contexts: ['page'] });
+    });
+});
+
+function openPanelInTab(tabId: number | undefined, action?: Action, selectionText?: string): void {
+    if (tabId === undefined) return;
+    const message: MessageToContentOpenPanel = { type: 'OPEN_PANEL', action, selectionText };
+    // Rejects on pages with no content script (chrome://, Web Store) — nothing to do there
+    chrome.tabs.sendMessage(tabId, message).catch(() => undefined);
+}
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+    const id = String(info.menuItemId);
+    if (!id.startsWith(MENU_PREFIX)) return;
+    const key = id.slice(MENU_PREFIX.length);
+    if (key === 'open') {
+        openPanelInTab(tab?.id);
+    } else if (MENU_ACTIONS.some((a) => a.id === key)) {
+        openPanelInTab(tab?.id, key as Action, info.selectionText);
+    }
+});
+
+chrome.commands.onCommand.addListener(async (command) => {
+    if (command !== 'open-panel') return;
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    openPanelInTab(tab?.id);
 });

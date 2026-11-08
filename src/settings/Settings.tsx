@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getSettings, saveSettings, getVocab, deleteVocabEntry } from '../shared/storage';
+import { getSettings, saveSettings, getVocab, deleteVocabEntry, normalizeSite } from '../shared/storage';
 import { sendHealthCheck } from '../shared/messages';
 import { isRTL } from '../shared/textDirection';
 import type { LLMSettings, HealthStatus, VocabEntry } from '../shared/types';
@@ -19,10 +19,14 @@ export function Settings() {
   const [vocab, setVocab] = useState<VocabEntry[]>([]);
   const [vocabSearch, setVocabSearch] = useState('');
 
+  // Raw textarea text, so Enter/spaces aren't eaten while typing
+  const [sitesText, setSitesText] = useState('');
+
   useEffect(() => {
     getSettings().then((s) => {
       setSettings(s);
       setSavedApiKey(s.apiKey);
+      setSitesText((s.disabledSites ?? []).join('\n'));
     });
     getVocab().then(setVocab);
   }, []);
@@ -347,6 +351,43 @@ export function Settings() {
             />
             Show 🔊 Listen buttons on results (text-to-speech)
           </label>
+        </div>
+
+        {/* On-page UI Card */}
+        <div style={cardStyle}>
+          <h2 style={{ margin: '0 0 6px', fontSize: '16px', fontWeight: 700, color: '#1A1A2E' }}>
+            On-page UI
+          </h2>
+          <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#6B7280' }}>
+            Control where LinguaAssist shows its floating buttons. Remember to press Save Settings above.
+          </p>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px', color: '#374151', marginBottom: '16px' }}>
+            <input
+              type="checkbox"
+              checked={settings.showPageButton !== false}
+              onChange={(e) => setSettings({ ...settings, showPageButton: e.target.checked })}
+              style={{ width: '16px', height: '16px', accentColor: '#5C6BC0' }}
+            />
+            Show the floating ✦ Page button
+          </label>
+
+          <label style={labelStyle}>Disabled sites</label>
+          <textarea
+            value={sitesText}
+            onChange={(e) => {
+              setSitesText(e.target.value);
+              const sites = e.target.value.split('\n').map(normalizeSite).filter(Boolean);
+              setSettings({ ...settings, disabledSites: sites });
+            }}
+            placeholder={'mail.google.com\ndocs.google.com'}
+            rows={4}
+            style={{ ...inputStyle, resize: 'vertical', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: '13px' }}
+          />
+          <p style={hintStyle}>
+            One hostname per line (subdomains included). On these sites the selection button and Page button are hidden;
+            the right-click menu and Alt+Shift+L shortcut still work.
+          </p>
         </div>
 
         {/* Health Check Card */}

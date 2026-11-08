@@ -1,16 +1,41 @@
 import React, { useEffect, useState } from 'react';
-import { getSettings } from '../shared/storage';
+import { getSettings, saveSettings, isSiteDisabled, normalizeSite } from '../shared/storage';
 
 const fontStack = "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif";
 
 export function Popup() {
   const [configured, setConfigured] = useState<boolean | null>(null);
+  // Hostname of the active tab (null on chrome:// pages etc.) and whether it's disabled
+  const [host, setHost] = useState<string | null>(null);
+  const [siteOff, setSiteOff] = useState(false);
 
   useEffect(() => {
     getSettings().then((s) => {
       setConfigured(Boolean(s.baseUrl && s.model));
+      chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
+        try {
+          const url = new URL(tab?.url ?? '');
+          if (url.protocol === 'http:' || url.protocol === 'https:') {
+            setHost(url.hostname);
+            setSiteOff(isSiteDisabled(s, url.hostname));
+          }
+        } catch {
+          /* no usable URL */
+        }
+      });
     });
   }, []);
+
+  const toggleSite = async () => {
+    if (!host) return;
+    const s = await getSettings();
+    const site = normalizeSite(host);
+    const others = (s.disabledSites ?? []).filter((e) => normalizeSite(e) !== site);
+    // Turning off: add the host. Turning on: also drops parent-domain entries.
+    const parentsRemoved = others.filter((e) => !(site === normalizeSite(e) || site.endsWith('.' + normalizeSite(e))));
+    await saveSettings({ ...s, disabledSites: siteOff ? parentsRemoved : [...others, site] });
+    setSiteOff(!siteOff);
+  };
 
   return (
     <div style={{
@@ -66,11 +91,23 @@ export function Popup() {
           <strong style={{ color: '#374151' }}>How to use:</strong>
           <ol style={{ margin: '6px 0 0 16px', padding: 0 }}>
             <li>Select text on any webpage</li>
-            <li>Click the <strong>✦ LinguaAssist</strong> button</li>
+            <li>Click <strong>✦ LinguaAssist</strong>, right-click, or press <strong>Alt+Shift+L</strong></li>
             <li>Choose your action</li>
             <li>Copy the result</li>
           </ol>
         </div>
+
+        {host && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#374151', marginBottom: '14px' }}>
+            <input
+              type="checkbox"
+              checked={siteOff}
+              onChange={toggleSite}
+              style={{ width: '15px', height: '15px', accentColor: '#5C6BC0' }}
+            />
+            <span>Hide buttons on <strong>{host}</strong></span>
+          </label>
+        )}
 
         <button
           onClick={() => chrome.runtime.openOptionsPage()}

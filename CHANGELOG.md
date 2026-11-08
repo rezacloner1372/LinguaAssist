@@ -3,6 +3,23 @@
 All notable changes to LinguaAssist are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Stop / Regenerate** controls for text actions, manual translate, page summary and chat.
+- **Dictionary mode** — translating a single word returns a dictionary-style entry (pronunciation, translations, meaning, examples, synonyms).
+- **Right-click menu** (Translate, Explain, Summarize, Fix grammar, Formal, Casual, Draft reply) and an **Alt+Shift+L** shortcut (rebind at `chrome://extensions/shortcuts`).
+- **Explain uses page context** — about 10 lines before and after the selection are sent to the model.
+- **On-page UI controls** — hide the ✦ Page button, or disable the buttons per site (Settings, or the toolbar popup).
+
+### Fixed
+
+- Streaming no longer duplicates text after a mid-stream failure, cancelled requests are aborted, and a dropped connection shows an error instead of loading forever.
+- Typing in the panel no longer triggers page keyboard shortcuts.
+- Selections inside inputs/textareas are supported; the page extractor no longer drops "privacy"/"consent" classes or large forms.
+- Reasoning models (o-series, GPT-5) now get `max_completion_tokens` and no custom temperature; Persian/Arabic token estimates are more accurate.
+
 ## [1.1.0] — 2026-08-31
 
 ### Added

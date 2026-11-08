@@ -1,13 +1,17 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { FloatingPanel } from './FloatingPanel';
-import type { PageContent, PanelState, SelectionContext } from '../shared/types';
+import type { Action, PageContent, PanelState, SelectionContext, MessageToContentOpenPanel } from '../shared/types';
+import { getSettings, isSiteDisabled, SETTINGS_KEY } from '../shared/storage';
 
 let shadowHost: HTMLElement | null = null;
 let panelRoot: ReturnType<typeof createRoot> | null = null;
 let triggerBtn: HTMLElement | null = null;
 let triggerTimeout: ReturnType<typeof setTimeout> | null = null;
 let pageFab: HTMLElement | null = null;
+// Per-site / per-user switches (kept in sync with chrome.storage via applySiteSettings)
+let siteDisabled = false;
+let pageButtonEnabled = true;
 
 // Module-level caches — persist for the lifetime of the page
 let cachedPageContent: PageContent | null = null;
@@ -87,6 +91,11 @@ function removePanel() {
   showPageFab();
 }
 
+function removePageFab() {
+  if (pageFab && pageFab.parentNode) pageFab.parentNode.removeChild(pageFab);
+  pageFab = null;
+}
+
 function hidePageFab() {
   if (pageFab) pageFab.style.display = 'none';
 }
@@ -95,7 +104,7 @@ function showPageFab() {
   if (pageFab) pageFab.style.display = 'flex';
 }
 
-function openPanel(text: string, x: number, y: number, selectionContext?: SelectionContext) {
+function openPanel(text: string, x: number, y: number, selectionContext?: SelectionContext, autoAction?: Action) {
   removeTrigger();
   removePanel();
   hidePageFab();
@@ -148,6 +157,7 @@ function openPanel(text: string, x: number, y: number, selectionContext?: Select
       cachedPageContent={cachedPageContent}
       onPageContentExtracted={(content) => { cachedPageContent = content; }}
       selectionContext={selectionContext}
+      autoAction={autoAction}
       initialState={initialState}
       onPersistState={updatePersistedState}
     />
@@ -286,6 +296,7 @@ document.addEventListener('mouseup', (e) => {
     return;
   }
 
+  if (siteDisabled) return;
   if (triggerTimeout) clearTimeout(triggerTimeout);
   triggerTimeout = setTimeout(() => {
     const selection = window.getSelection();
@@ -337,8 +348,51 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Initialize the persistent FAB — http/https pages only (manifest narrows
-// matches, this guards the runtime edge cases like file://)
-if (location.protocol === 'http:' || location.protocol === 'https:') {
-  createPageFab();
+// ─── Per-site / settings gating ──────────────────────────────────────────────
+
+const isWebPage = location.protocol === 'http:' || location.protocol === 'https:';
+
+/** Show/hide the on-page UI according to the user's settings for this site. */
+async function applySiteSettings() {
+  const settings = await getSettings();
+  siteDisabled = isSiteDisabled(settings, location.hostname);
+  pageButtonEnabled = settings.showPageButton !== false;
+
+  if (siteDisabled) removeTrigger();
+  if (isWebPage && !siteDisabled && pageButtonEnabled) {
+    // Don't resurrect the button underneath an open panel
+    if (!pageFab) createPageFab();
+    if (shadowHost) hidePageFab();
+  } else {
+    removePageFab();
+  }
 }
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes[SETTINGS_KEY]) void applySiteSettings();
+});
+
+// ─── Context menu / keyboard shortcut (sent by the service worker) ───────────
+
+function openPanelFromCommand(action?: Action, fallbackText?: string) {
+  const selection = window.getSelection();
+  const live = selection?.toString().trim() ?? '';
+  const text = (live || fallbackText || '').trim().slice(0, 5000);
+
+  if (text && live && selection && selection.rangeCount > 0) {
+    const rect = selection.getRangeAt(0).getBoundingClientRect();
+    openPanel(text, rect.right, rect.bottom, getSelectionContext(selection), action);
+  } else {
+    // No usable selection geometry — dock near the top-right like the Page button
+    const x = Math.max(24, window.innerWidth - 360 - 24);
+    openPanel(text, x, 80, undefined, action);
+  }
+}
+
+chrome.runtime.onMessage.addListener((message: MessageToContentOpenPanel) => {
+  if (message?.type === 'OPEN_PANEL') {
+    openPanelFromCommand(message.action, message.selectionText);
+  }
+});
+
+void applySiteSettings();

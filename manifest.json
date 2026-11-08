@@ -3,7 +3,7 @@
   "name": "LinguaAssist",
   "version": "1.1.0",
   "description": "Bilingual Persian/English assistant — translate, explain, rewrite, summarize, and chat using your own LLM",
-  "permissions": ["storage", "activeTab", "scripting", "tts"],
+  "permissions": ["storage", "activeTab", "scripting", "tts", "contextMenus"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"
@@ -13,6 +13,12 @@
     "js": ["content.js"],
     "run_at": "document_end"
   }],
+  "commands": {
+    "open-panel": {
+      "suggested_key": { "default": "Alt+Shift+L", "mac": "Alt+Shift+L" },
+      "description": "Open LinguaAssist on the selection (or page)"
+    }
+  },
   "action": {
     "default_popup": "popup.html",
     "default_icon": {

@@ -146,6 +146,14 @@ Start Ollama first: `ollama serve`
 2. Click **Read Page** to extract content.
 3. **Summarize** for a structured summary, or **Chat with Page** to ask questions ("What are the key takeaways?", "Summarize section 2.").
 
+### Right-click menu and shortcut
+
+Select text, right-click and choose **LinguaAssist → Translate / Explain / …** to run an action immediately, or press **Alt+Shift+L** to open the panel (rebind it at `chrome://extensions/shortcuts`). Translating a single word returns a dictionary-style entry. Use **■ Stop** to cancel a response and **↻** to regenerate it.
+
+### Hiding the buttons
+
+Turn off the floating ✦ Page button, or disable the buttons on specific sites, in **Settings → On-page UI** — or tick **Hide buttons on this site** in the toolbar popup. The right-click menu and shortcut keep working on disabled sites.
+
 ### Moving the panel
 
 Drag the panel header to reposition it anywhere on screen. It stays where you drop it until closed; the next open anchors near your selection again.
