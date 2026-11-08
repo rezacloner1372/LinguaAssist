@@ -1,7 +1,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { FloatingPanel } from './FloatingPanel';
-import type { PageContent, PanelState } from '../shared/types';
+import type { PageContent, PanelState, SelectionContext } from '../shared/types';
 
 let shadowHost: HTMLElement | null = null;
 let panelRoot: ReturnType<typeof createRoot> | null = null;
@@ -12,6 +12,60 @@ let pageFab: HTMLElement | null = null;
 // Module-level caches — persist for the lifetime of the page
 let cachedPageContent: PageContent | null = null;
 let panelState: PanelState | null = null;
+
+const CONTEXT_LINES = 10;
+const CONTEXT_MAX_CHARS = 1500;
+
+function lastLines(text: string, n: number): string {
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  return lines.slice(-n).join('\n').slice(-CONTEXT_MAX_CHARS);
+}
+
+function firstLines(text: string, n: number): string {
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  return lines.slice(0, n).join('\n').slice(0, CONTEXT_MAX_CHARS);
+}
+
+/**
+ * Collect ~10 lines of text before and after the selection so "Explain" can
+ * use the surrounding context. Climbs from the selection to an ancestor that
+ * holds enough text, then slices the text around the selected range.
+ */
+function getSelectionContext(selection: Selection | null): SelectionContext | undefined {
+  if (!selection || selection.rangeCount === 0) return undefined;
+  const range = selection.getRangeAt(0);
+
+  let container: Node | null = range.commonAncestorContainer;
+  if (container.nodeType === Node.TEXT_NODE) container = container.parentNode;
+  let el = container as Element | null;
+  const MIN_CHARS = CONTEXT_MAX_CHARS * 2;
+  while (el && el !== document.body && (el.textContent?.length ?? 0) < MIN_CHARS) {
+    el = el.parentElement;
+  }
+  if (!el) el = document.body;
+
+  try {
+    const beforeRange = document.createRange();
+    beforeRange.selectNodeContents(el);
+    beforeRange.setEnd(range.startContainer, range.startOffset);
+    const afterRange = document.createRange();
+    afterRange.selectNodeContents(el);
+    afterRange.setStart(range.endContainer, range.endOffset);
+
+    const before = lastLines(beforeRange.toString(), CONTEXT_LINES);
+    const after = firstLines(afterRange.toString(), CONTEXT_LINES);
+    return before || after ? { before, after } : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Same idea for <input>/<textarea>, where Range doesn't reach the text. */
+function getFieldContext(field: HTMLInputElement | HTMLTextAreaElement, start: number, end: number): SelectionContext | undefined {
+  const before = lastLines(field.value.slice(0, start), CONTEXT_LINES);
+  const after = firstLines(field.value.slice(end), CONTEXT_LINES);
+  return before || after ? { before, after } : undefined;
+}
 
 function updatePersistedState(partial: Partial<PanelState>) {
   panelState = { ...(panelState ?? { selectedText: '', activeView: 'page', textResult: '', activeTextAction: null, summary: '', chatMessages: [] }), ...partial };
@@ -41,7 +95,7 @@ function showPageFab() {
   if (pageFab) pageFab.style.display = 'flex';
 }
 
-function openPanel(text: string, x: number, y: number) {
+function openPanel(text: string, x: number, y: number, selectionContext?: SelectionContext) {
   removeTrigger();
   removePanel();
   hidePageFab();
@@ -69,6 +123,16 @@ function openPanel(text: string, x: number, y: number) {
   `;
   document.body.appendChild(shadowHost);
 
+  // Keep typing inside the panel from reaching page hotkey handlers (GitHub,
+  // Gmail, YouTube…). Events are retargeted to the host at the document level,
+  // so stopping them here at the host keeps them away from page listeners.
+  // Escape is left alone so the global "Esc to close" still works.
+  for (const type of ['keydown', 'keyup', 'keypress'] as const) {
+    shadowHost.addEventListener(type, (e) => {
+      if ((e as KeyboardEvent).key !== 'Escape') e.stopPropagation();
+    });
+  }
+
   const shadowRoot = shadowHost.attachShadow({ mode: 'open' });
   const mountPoint = document.createElement('div');
   mountPoint.style.pointerEvents = 'all';
@@ -83,13 +147,14 @@ function openPanel(text: string, x: number, y: number) {
       onClose={removePanel}
       cachedPageContent={cachedPageContent}
       onPageContentExtracted={(content) => { cachedPageContent = content; }}
+      selectionContext={selectionContext}
       initialState={initialState}
       onPersistState={updatePersistedState}
     />
   );
 }
 
-function showTrigger(text: string, rect: DOMRect) {
+function showTrigger(text: string, rect: DOMRect, selectionContext?: SelectionContext) {
   removeTrigger();
 
   triggerBtn = document.createElement('button');
@@ -142,7 +207,7 @@ function showTrigger(text: string, rect: DOMRect) {
     e.stopPropagation();
     const viewportX = rect.right;
     const viewportY = rect.bottom;
-    openPanel(text, viewportX, viewportY);
+    openPanel(text, viewportX, viewportY, selectionContext);
   });
 
   document.body.appendChild(triggerBtn);
@@ -226,6 +291,7 @@ document.addEventListener('mouseup', (e) => {
     const selection = window.getSelection();
     let text = selection?.toString().trim() ?? '';
     let rect: DOMRect | null = null;
+    let context: SelectionContext | undefined;
 
     // Selections inside <input>/<textarea> have no usable Range rect and may
     // not appear in getSelection() — fall back to the field itself.
@@ -235,14 +301,16 @@ document.addEventListener('mouseup', (e) => {
       if (selectionStart !== null && selectionEnd !== null && selectionEnd > selectionStart) {
         text = value.slice(selectionStart, selectionEnd).trim();
         rect = active.getBoundingClientRect();
+        context = getFieldContext(active, selectionStart, selectionEnd);
       }
     }
 
     if (text.length > 0 && text.length <= 5000) {
       if (!rect && selection && selection.rangeCount > 0) {
         rect = selection.getRangeAt(0).getBoundingClientRect();
+        context = getSelectionContext(selection);
       }
-      if (rect) showTrigger(text, rect);
+      if (rect) showTrigger(text, rect, context);
       else removeTrigger();
     } else {
       removeTrigger();

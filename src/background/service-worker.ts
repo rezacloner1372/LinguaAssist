@@ -54,7 +54,7 @@ Return ONLY the translated text with no explanation or commentary.`;
         case 'fix_grammar':
             return 'You are a professional editor. Fix the grammar, spelling, punctuation, and clarity of the following text. Keep the original language. Return ONLY the corrected text with no explanation or commentary.';
         case 'explain':
-            return `You are a patient language tutor. Explain the following text clearly and concisely. If the text is in Persian, explain in Persian and gloss key terms in English; otherwise explain in English. Use short markdown (a brief paragraph plus a few bullets at most). Return ONLY the explanation.`;
+            return `You are a patient language tutor. Explain the following text clearly and concisely. If the input includes "TEXT BEFORE" / "TEXT AFTER" sections, they are surrounding context from the same page: use them to understand what the SELECTED TEXT means in this specific context, and explain the selected text only (do not summarize the context). If the text is in Persian, explain in Persian and gloss key terms in English; otherwise explain in English. Use short markdown (a brief paragraph plus a few bullets at most). Return ONLY the explanation.`;
         case 'summarize_selection':
             return 'You are an expert summarizer. Summarize the following text in 2–4 concise bullet points, in the same language as the input. Return ONLY the summary.';
         case 'rewrite_formal':
@@ -348,14 +348,14 @@ chrome.runtime.onMessage.addListener(
     (message: IncomingMessage, _sender, sendResponse: (response: MessageResponse) => void) => {
 
         if (message.type === 'LLM_REQUEST') {
-            const { text, action } = message.payload;
+            const { action } = message.payload;
             getSettings().then((settings) => {
                 if (!settings.baseUrl || !settings.model) {
                     sendResponse({ success: false, error: 'LLM not configured. Please open Settings.' });
                     return;
                 }
                 const systemPrompt = getSystemPrompt(action, settings);
-                callLLM(settings, { systemPrompt, userText: text, includeOptionalParams: true })
+                callLLM(settings, { systemPrompt, userText: buildUserText(message.payload), includeOptionalParams: true })
                     .then((result) => sendResponse({ success: true, data: result }))
                     .catch((err) => sendResponse({ success: false, error: err.message }));
             });
@@ -421,13 +421,24 @@ chrome.runtime.onMessage.addListener(
 
 // ─── Streaming port ──────────────────────────────────────────────────────────
 
+/** For 'explain', wrap the selection with its surrounding page text. */
+function buildUserText(payload: LLMRequest): string {
+    const ctx = payload.context;
+    if (payload.action !== 'explain' || !ctx || (!ctx.before && !ctx.after)) return payload.text;
+    return [
+        ctx.before ? `TEXT BEFORE:\n${ctx.before}` : '',
+        `SELECTED TEXT:\n${payload.text}`,
+        ctx.after ? `TEXT AFTER:\n${ctx.after}` : '',
+    ].filter(Boolean).join('\n\n');
+}
+
 async function handleTextActionStream(payload: LLMRequest, port: chrome.runtime.Port): Promise<void> {
     const settings = await getSettings();
     if (!settings.baseUrl || !settings.model) {
         port.postMessage({ type: 'ERROR', error: 'LLM not configured. Please open Settings.' });
         return;
     }
-    await streamWithFallback(port, settings, getSystemPrompt(payload.action, settings), [], payload.text, 2048);
+    await streamWithFallback(port, settings, getSystemPrompt(payload.action, settings), [], buildUserText(payload), 2048);
 }
 
 async function handlePageSummarizeStream(payload: PageSummarizeRequest, port: chrome.runtime.Port): Promise<void> {

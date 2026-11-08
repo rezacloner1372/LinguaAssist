@@ -49,9 +49,17 @@ export interface VocabEntry {
   langPair: string;
 }
 
+/** Text surrounding a selection, used to give "Explain" real context */
+export interface SelectionContext {
+  before: string;
+  after: string;
+}
+
 export interface LLMRequest {
   text: string;
   action: Action;
+  /** Only used by 'explain' */
+  context?: SelectionContext;
 }
 
 export interface PageSummarizeRequest {

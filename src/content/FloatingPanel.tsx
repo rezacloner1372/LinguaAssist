@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import type { Action, PageContent, ChatMessage, PanelState, VocabEntry, LLMSettings } from '../shared/types';
+import type { Action, SelectionContext, PageContent, ChatMessage, PanelState, VocabEntry, LLMSettings } from '../shared/types';
 import { streamLLMRequest, streamPageChat } from '../shared/messages';
 import { getSettings, saveVocabEntry } from '../shared/storage';
 import { isRTL, langPairLabel } from '../shared/textDirection';
@@ -15,6 +15,7 @@ interface Props {
   onClose: () => void;
   cachedPageContent: PageContent | null;
   onPageContentExtracted: (content: PageContent) => void;
+  selectionContext?: SelectionContext;
   initialState: PanelState | null;
   onPersistState: (partial: Partial<PanelState>) => void;
 }
@@ -52,6 +53,7 @@ export function FloatingPanel({
   onClose,
   cachedPageContent,
   onPageContentExtracted,
+  selectionContext,
   initialState,
   onPersistState,
 }: Props) {
@@ -196,7 +198,7 @@ export function FloatingPanel({
 
     let accumulated = '';
     const disconnect = streamLLMRequest(
-      { type: 'TEXT_ACTION_STREAM', payload: { text: selectedText, action } },
+      { type: 'TEXT_ACTION_STREAM', payload: { text: selectedText, action, context: action === 'explain' ? selectionContext : undefined } },
       (chunk) => {
         accumulated += chunk;
         setTextResult(accumulated);
@@ -212,7 +214,7 @@ export function FloatingPanel({
       },
     );
     textDisconnectRef.current = disconnect;
-  }, [selectedText]);
+  }, [selectedText, selectionContext]);
 
   // ── Manual translate (typed/pasted text, same stream as text actions) ──
   const [manualInput, setManualInput] = useState('');
