@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getSettings, saveSettings, isSiteDisabled, normalizeSite } from '../shared/storage';
+import { getSettings, saveDisabledSites, isSiteDisabled, withSite, withoutSite } from '../shared/storage';
 
 const fontStack = "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif";
 
@@ -29,11 +29,7 @@ export function Popup() {
   const toggleSite = async () => {
     if (!host) return;
     const s = await getSettings();
-    const site = normalizeSite(host);
-    const others = (s.disabledSites ?? []).filter((e) => normalizeSite(e) !== site);
-    // Turning off: add the host. Turning on: also drops parent-domain entries.
-    const parentsRemoved = others.filter((e) => !(site === normalizeSite(e) || site.endsWith('.' + normalizeSite(e))));
-    await saveSettings({ ...s, disabledSites: siteOff ? parentsRemoved : [...others, site] });
+    await saveDisabledSites(siteOff ? withoutSite(s, host) : withSite(s, host));
     setSiteOff(!siteOff);
   };
 

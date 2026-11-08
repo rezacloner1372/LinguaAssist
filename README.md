@@ -160,7 +160,7 @@ When the selection is inside an input, textarea or rich-text editor (Gmail, Noti
 
 ### Hiding the buttons
 
-Turn off the floating ✦ Page button, or disable the buttons on specific sites, in **Settings → On-page UI** — or tick **Hide buttons on this site** in the toolbar popup. The right-click menu and shortcut keep working on disabled sites.
+Click **⊘ Hide here** in the panel header to turn LinguaAssist off on the current site (an Undo toast appears). Hidden sites are listed under **Settings → On-page UI → Disabled sites**, where you can remove them (✕) or add new ones. You can also turn off the floating ✦ Page button there — or tick **Hide buttons on this site** in the toolbar popup. The right-click menu and shortcut keep working on disabled sites.
 
 ### Moving the panel
 

@@ -14,6 +14,9 @@ interface Props {
   anchorX: number;
   anchorY: number;
   onClose: () => void;
+  /** Disable LinguaAssist on the current site (persisted in Settings → Disabled sites) */
+  onDisableSite?: () => void;
+  siteHost?: string;
   cachedPageContent: PageContent | null;
   onPageContentExtracted: (content: PageContent) => void;
   selectionContext?: SelectionContext;
@@ -56,6 +59,8 @@ export function FloatingPanel({
   anchorX,
   anchorY,
   onClose,
+  onDisableSite,
+  siteHost,
   cachedPageContent,
   onPageContentExtracted,
   selectionContext,
@@ -670,6 +675,30 @@ export function FloatingPanel({
             {chatOpen ? 'Chat with Page' : 'LinguaAssist'}
           </span>
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+        {onDisableSite && (
+          <button
+            onClick={onDisableSite}
+            style={{
+              background: 'rgba(255,255,255,0.2)',
+              border: 'none',
+              borderRadius: '8px',
+              color: 'white',
+              height: '26px',
+              padding: '0 9px',
+              cursor: 'pointer',
+              fontSize: '11px',
+              fontWeight: 500,
+              fontFamily: fontStack,
+              whiteSpace: 'nowrap',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.32)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.2)')}
+            title={`Turn LinguaAssist off on ${siteHost ?? 'this site'} (undo or manage in Settings → Disabled sites)`}
+          >
+            ⊘ Hide here
+          </button>
+        )}
         <button
           onClick={onClose}
           style={{
@@ -694,6 +723,7 @@ export function FloatingPanel({
         >
           ×
         </button>
+        </div>
       </div>
 
       {/* ── Tab Bar (only when not in chat) ── */}

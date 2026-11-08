@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getSettings, saveSettings, getVocab, deleteVocabEntry, normalizeSite, newProfileId } from '../shared/storage';
+import { getSettings, saveSettings, getVocab, deleteVocabEntry, normalizeSite, newProfileId, saveDisabledSites, withSite, SETTINGS_KEY } from '../shared/storage';
 import { sendHealthCheck, sendListModels } from '../shared/messages';
 import { isRTL } from '../shared/textDirection';
 import type { LLMSettings, LLMProfile, ActionGroup, HealthStatus, VocabEntry } from '../shared/types';
@@ -31,16 +31,25 @@ export function Settings() {
   const [modelsLoading, setModelsLoading] = useState(false);
   const [modelsError, setModelsError] = useState('');
 
-  // Raw textarea text, so Enter/spaces aren't eaten while typing
-  const [sitesText, setSitesText] = useState('');
+  const [newSite, setNewSite] = useState('');
 
   useEffect(() => {
     getSettings().then((s) => {
       setSettings(s);
       setSavedApiKey(s.apiKey);
-      setSitesText((s.disabledSites ?? []).join('\n'));
     });
     getVocab().then(setVocab);
+
+    // Sites can be hidden/un-hidden from the panel or popup while this page is
+    // open; follow them so Save Settings never writes back a stale list.
+    const onStorage = (changes: { [key: string]: chrome.storage.StorageChange }, area: string) => {
+      const next = changes[SETTINGS_KEY]?.newValue as LLMSettings | undefined;
+      if (area === 'local' && next) {
+        setSettings((prev) => ({ ...prev, disabledSites: next.disabledSites ?? [] }));
+      }
+    };
+    chrome.storage.onChanged.addListener(onStorage);
+    return () => chrome.storage.onChanged.removeListener(onStorage);
   }, []);
 
   // Top-level baseUrl/model/apiKey always mirror the active profile.
@@ -119,6 +128,19 @@ export function Settings() {
       setModelsLoading(false);
     }
   };
+
+  // Site list edits are saved immediately, independent of the Save button
+  const updateSites = async (sites: string[]) => {
+    await saveDisabledSites(sites);
+    setSettings((prev) => ({ ...prev, disabledSites: sites }));
+  };
+  const handleAddSite = async () => {
+    const site = normalizeSite(newSite);
+    if (!site) return;
+    await updateSites(withSite(settings, site));
+    setNewSite('');
+  };
+  const handleRemoveSite = (site: string) => updateSites((settings.disabledSites ?? []).filter((s) => s !== site));
 
   const handleSave = async () => {
     await saveSettings(settings);
@@ -560,20 +582,55 @@ export function Settings() {
           </label>
 
           <label style={labelStyle}>Disabled sites</label>
-          <textarea
-            value={sitesText}
-            onChange={(e) => {
-              setSitesText(e.target.value);
-              const sites = e.target.value.split('\n').map(normalizeSite).filter(Boolean);
-              setSettings({ ...settings, disabledSites: sites });
-            }}
-            placeholder={'mail.google.com\ndocs.google.com'}
-            rows={4}
-            style={{ ...inputStyle, resize: 'vertical', fontFamily: 'ui-monospace, Menlo, monospace', fontSize: '13px' }}
-          />
+          {(settings.disabledSites ?? []).length === 0 ? (
+            <p style={{ ...hintStyle, marginTop: 0, marginBottom: '10px' }}>
+              No sites disabled. Use <strong>⊘ Hide here</strong> in the panel, the toolbar popup, or add one below.
+            </p>
+          ) : (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
+              {(settings.disabledSites ?? []).map((site) => (
+                <span
+                  key={site}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '6px',
+                    padding: '5px 6px 5px 12px', background: '#F0F4FF', border: '1px solid #C5CAE9',
+                    borderRadius: '999px', fontSize: '13px', color: '#3F51B5',
+                    fontFamily: 'ui-monospace, Menlo, monospace',
+                  }}
+                >
+                  {site}
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveSite(site)}
+                    title={`Enable LinguaAssist on ${site} again`}
+                    style={{
+                      background: '#E0E4FA', border: 'none', borderRadius: '50%', width: '20px', height: '20px',
+                      cursor: 'pointer', color: '#3F51B5', fontSize: '12px', lineHeight: 1, padding: 0,
+                    }}
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <input
+              type="text"
+              value={newSite}
+              onChange={(e) => setNewSite(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void handleAddSite(); } }}
+              placeholder="mail.google.com"
+              style={{ ...inputStyle, flex: 1, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: '13px' }}
+              {...focusBlur}
+            />
+            <button type="button" onClick={handleAddSite} disabled={!normalizeSite(newSite)} style={{ ...smallBtn, opacity: normalizeSite(newSite) ? 1 : 0.5 }}>
+              ＋ Add
+            </button>
+          </div>
           <p style={hintStyle}>
-            One hostname per line (subdomains included). On these sites the selection button and Page button are hidden;
-            the right-click menu and Alt+Shift+L shortcut still work.
+            Changes here apply immediately (no need to press Save). Subdomains are included. On these sites the selection
+            button and Page button are hidden; the right-click menu and Alt+Shift+L shortcut still work.
           </p>
         </div>
 

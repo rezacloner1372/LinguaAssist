@@ -4,7 +4,7 @@ import { FloatingPanel } from './FloatingPanel';
 import type { Action, PageContent, PanelState, SelectionContext, MessageToContentOpenPanel } from '../shared/types';
 import { isTextField, makeFieldTarget, makeEditableTarget } from './replaceTarget';
 import type { ReplaceTarget } from './replaceTarget';
-import { getSettings, isSiteDisabled, SETTINGS_KEY } from '../shared/storage';
+import { getSettings, isSiteDisabled, withSite, withoutSite, saveDisabledSites, SETTINGS_KEY } from '../shared/storage';
 
 let shadowHost: HTMLElement | null = null;
 let panelRoot: ReturnType<typeof createRoot> | null = null;
@@ -204,6 +204,8 @@ function openPanel(
       anchorX={x}
       anchorY={y}
       onClose={removePanel}
+      onDisableSite={disableCurrentSite}
+      siteHost={location.hostname.replace(/^www\./, '')}
       cachedPageContent={cachedPageContent}
       onPageContentExtracted={(content) => { cachedPageContent = content; }}
       selectionContext={selectionContext}
@@ -374,6 +376,54 @@ document.addEventListener('keydown', (e) => {
     removePanel();
   }
 });
+
+// ─── Disable on this site (from the panel) ───────────────────────────────────
+
+let toastEl: HTMLElement | null = null;
+let toastTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Small confirmation toast with an action button; lives in the page, auto-dismisses. */
+function showToast(message: string, actionLabel: string, onAction: () => void) {
+  if (toastEl) toastEl.remove();
+  if (toastTimer) clearTimeout(toastTimer);
+
+  const el = document.createElement('div');
+  el.id = 'lingua-assist-toast';
+  el.style.cssText = `
+    position: fixed; bottom: 24px; right: 24px; z-index: 2147483647;
+    display: flex; align-items: center; gap: 12px;
+    background: #1F2340; color: white; padding: 10px 14px; border-radius: 12px;
+    font: 13px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.3); max-width: 360px;
+  `;
+  const text = document.createElement('span');
+  text.textContent = message;
+  const btn = document.createElement('button');
+  btn.textContent = actionLabel;
+  btn.style.cssText = `
+    background: rgba(255,255,255,0.16); color: white; border: none; border-radius: 8px;
+    padding: 4px 10px; font: inherit; font-weight: 600; cursor: pointer;
+  `;
+  btn.addEventListener('click', () => {
+    onAction();
+    el.remove();
+  });
+  el.append(text, btn);
+  document.body.appendChild(el);
+  toastEl = el;
+  toastTimer = setTimeout(() => el.remove(), 8000);
+}
+
+/** Add this site to the disabled list, hide the UI, and offer an Undo. */
+async function disableCurrentSite() {
+  const host = location.hostname.replace(/^www\./, '');
+  await saveDisabledSites(withSite(await getSettings(), host));
+  removeTrigger();
+  removePanel(); // storage listener (applySiteSettings) then removes the Page button
+  showToast(`LinguaAssist is off on ${host}. Manage in Settings → Disabled sites.`, 'Undo', async () => {
+    await saveDisabledSites(withoutSite(await getSettings(), host));
+  });
+}
 
 // ─── Per-site / settings gating ──────────────────────────────────────────────
 

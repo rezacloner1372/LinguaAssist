@@ -156,3 +156,24 @@ export function resolveForGroup(settings: LLMSettings, group: ActionGroup): LLMS
     ? { ...settings, baseUrl: profile.baseUrl, model: profile.model, apiKey: profile.apiKey }
     : settings;
 }
+
+/** Disabled-sites list with `hostname` added (no duplicates). */
+export function withSite(settings: LLMSettings, hostname: string): string[] {
+  const site = normalizeSite(hostname);
+  const current = (settings.disabledSites ?? []).map(normalizeSite).filter(Boolean);
+  return current.includes(site) ? current : [...current, site];
+}
+
+/** Disabled-sites list with every entry that covers `hostname` (itself or a parent domain) removed. */
+export function withoutSite(settings: LLMSettings, hostname: string): string[] {
+  const host = normalizeSite(hostname);
+  return (settings.disabledSites ?? [])
+    .map(normalizeSite)
+    .filter((site) => site !== '' && !(host === site || host.endsWith('.' + site)));
+}
+
+/** Persist a new disabled-sites list without touching other (possibly unsaved) settings. */
+export async function saveDisabledSites(sites: string[]): Promise<void> {
+  const stored = await getSettings();
+  await saveSettings({ ...stored, disabledSites: sites });
+}

@@ -15,6 +15,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 - **Dictionary mode** — translating a single word returns a dictionary-style entry (pronunciation, translations, meaning, examples, synonyms).
 - **Right-click menu** (Translate, Explain, Summarize, Fix grammar, Formal, Casual, Draft reply) and an **Alt+Shift+L** shortcut (rebind at `chrome://extensions/shortcuts`).
 - **Explain uses page context** — about 10 lines before and after the selection are sent to the model.
+- **⊘ Hide here** button in the panel header turns LinguaAssist off on the current site, with an Undo toast; hidden sites appear as removable chips in Settings → Disabled sites (changes apply instantly).
 - **On-page UI controls** — hide the ✦ Page button, or disable the buttons per site (Settings, or the toolbar popup).
 
 ### Fixed
