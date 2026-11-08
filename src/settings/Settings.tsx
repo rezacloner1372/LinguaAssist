@@ -1,8 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { getSettings, saveSettings, getVocab, deleteVocabEntry, normalizeSite } from '../shared/storage';
-import { sendHealthCheck } from '../shared/messages';
+import { getSettings, saveSettings, getVocab, deleteVocabEntry, normalizeSite, newProfileId } from '../shared/storage';
+import { sendHealthCheck, sendListModels } from '../shared/messages';
 import { isRTL } from '../shared/textDirection';
-import type { LLMSettings, HealthStatus, VocabEntry } from '../shared/types';
+import type { LLMSettings, LLMProfile, ActionGroup, HealthStatus, VocabEntry } from '../shared/types';
+
+const ROUTING_GROUPS: { key: ActionGroup; label: string }[] = [
+  { key: 'translate', label: 'Translate (and dictionary)' },
+  { key: 'explain', label: 'Explain' },
+  { key: 'rewrite', label: 'Grammar, rewrite, reply & summarize selection' },
+  { key: 'page', label: 'Page summarize & chat' },
+];
 
 const fontStack = "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif";
 
@@ -19,6 +26,11 @@ export function Settings() {
   const [vocab, setVocab] = useState<VocabEntry[]>([]);
   const [vocabSearch, setVocabSearch] = useState('');
 
+  // Model list fetched from the endpoint's /models
+  const [models, setModels] = useState<string[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsError, setModelsError] = useState('');
+
   // Raw textarea text, so Enter/spaces aren't eaten while typing
   const [sitesText, setSitesText] = useState('');
 
@@ -30,6 +42,83 @@ export function Settings() {
     });
     getVocab().then(setVocab);
   }, []);
+
+  // Top-level baseUrl/model/apiKey always mirror the active profile.
+  const patchActive = (patch: Partial<Omit<LLMProfile, 'id'>>) =>
+    setSettings((prev) => {
+      const { name: _name, ...connection } = patch;
+      return {
+        ...prev,
+        ...connection,
+        profiles: (prev.profiles ?? []).map((p) => (p.id === prev.activeProfileId ? { ...p, ...patch } : p)),
+      };
+    });
+
+  const selectProfile = (id: string) => {
+    const p = settings.profiles?.find((x) => x.id === id);
+    if (!p) return;
+    setSettings((prev) => ({ ...prev, activeProfileId: id, baseUrl: p.baseUrl, model: p.model, apiKey: p.apiKey }));
+    setSavedApiKey(p.apiKey);
+    setApiKeyDirty(false);
+    setShowApiKey(false);
+    setModels([]);
+    setModelsError('');
+  };
+
+  const addProfile = () => {
+    const profiles = settings.profiles ?? [];
+    const p: LLMProfile = { id: newProfileId(), name: `Profile ${profiles.length + 1}`, baseUrl: '', model: '', apiKey: '' };
+    setSettings((prev) => ({
+      ...prev,
+      profiles: [...(prev.profiles ?? []), p],
+      activeProfileId: p.id,
+      baseUrl: '',
+      model: '',
+      apiKey: '',
+    }));
+    setSavedApiKey('');
+    setApiKeyDirty(false);
+    setModels([]);
+    setModelsError('');
+  };
+
+  const deleteProfile = () => {
+    const profiles = settings.profiles ?? [];
+    const current = profiles.find((p) => p.id === settings.activeProfileId);
+    if (!current || profiles.length <= 1) return;
+    if (!window.confirm(`Delete profile "${current.name}"?`)) return;
+    const remaining = profiles.filter((p) => p.id !== current.id);
+    const next = remaining[0];
+    const routing = { ...settings.actionProfiles };
+    (Object.keys(routing) as ActionGroup[]).forEach((g) => {
+      if (routing[g] === current.id) delete routing[g];
+    });
+    setSettings((prev) => ({
+      ...prev,
+      profiles: remaining,
+      activeProfileId: next.id,
+      actionProfiles: routing,
+      baseUrl: next.baseUrl,
+      model: next.model,
+      apiKey: next.apiKey,
+    }));
+    setSavedApiKey(next.apiKey);
+    setApiKeyDirty(false);
+    setModels([]);
+  };
+
+  const handleFetchModels = async () => {
+    setModelsLoading(true);
+    setModelsError('');
+    try {
+      setModels(await sendListModels(settings.baseUrl, settings.apiKey));
+    } catch (err) {
+      setModels([]);
+      setModelsError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setModelsLoading(false);
+    }
+  };
 
   const handleSave = async () => {
     await saveSettings(settings);
@@ -108,6 +197,19 @@ export function Settings() {
     boxSizing: 'border-box',
   };
 
+  const smallBtn: React.CSSProperties = {
+    padding: '0 14px',
+    background: '#FFFFFF',
+    color: '#5C6BC0',
+    border: '1px solid #C5CAE9',
+    borderRadius: '10px',
+    fontSize: '13px',
+    fontWeight: 500,
+    cursor: 'pointer',
+    fontFamily: fontStack,
+    whiteSpace: 'nowrap',
+  };
+
   const labelStyle: React.CSSProperties = {
     display: 'block',
     fontSize: '13px',
@@ -173,12 +275,49 @@ export function Settings() {
             Connect to any OpenAI-compatible endpoint. Works with OpenAI, Ollama, Together.ai, Groq, and others.
           </p>
 
+          {/* Profile selector */}
+          <div style={{ marginBottom: '16px' }}>
+            <label style={labelStyle}>Profile</label>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <select
+                value={settings.activeProfileId ?? ''}
+                onChange={(e) => selectProfile(e.target.value)}
+                style={{ ...inputStyle, flex: 1, cursor: 'pointer' }}
+              >
+                {(settings.profiles ?? []).map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+              <button type="button" onClick={addProfile} style={smallBtn} title="Add a new profile">＋ New</button>
+              <button
+                type="button"
+                onClick={deleteProfile}
+                disabled={(settings.profiles?.length ?? 0) <= 1}
+                style={{ ...smallBtn, opacity: (settings.profiles?.length ?? 0) <= 1 ? 0.4 : 1 }}
+                title="Delete this profile"
+              >
+                🗑
+              </button>
+            </div>
+            <input
+              type="text"
+              value={settings.profiles?.find((p) => p.id === settings.activeProfileId)?.name ?? ''}
+              onChange={(e) => patchActive({ name: e.target.value })}
+              placeholder="Profile name"
+              style={{ ...inputStyle, marginTop: '8px' }}
+              {...focusBlur}
+            />
+            <p style={hintStyle}>
+              Keep several connections (e.g. OpenAI, a local Ollama) and switch between them. The selected profile is the default for every feature.
+            </p>
+          </div>
+
           <div style={{ marginBottom: '16px' }}>
             <label style={labelStyle}>Base URL</label>
             <input
               type="url"
               value={settings.baseUrl}
-              onChange={(e) => setSettings({ ...settings, baseUrl: e.target.value })}
+              onChange={(e) => patchActive({ baseUrl: e.target.value })}
               placeholder="https://api.openai.com/v1"
               style={inputStyle}
               {...focusBlur}
@@ -188,14 +327,31 @@ export function Settings() {
 
           <div style={{ marginBottom: '16px' }}>
             <label style={labelStyle}>Model</label>
-            <input
-              type="text"
-              value={settings.model}
-              onChange={(e) => setSettings({ ...settings, model: e.target.value })}
-              placeholder="gpt-4o-mini"
-              style={inputStyle}
-              {...focusBlur}
-            />
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <input
+                type="text"
+                list="lingua-models"
+                value={settings.model}
+                onChange={(e) => patchActive({ model: e.target.value })}
+                placeholder="gpt-4o-mini"
+                style={{ ...inputStyle, flex: 1 }}
+                {...focusBlur}
+              />
+              <button
+                type="button"
+                onClick={handleFetchModels}
+                disabled={modelsLoading || !settings.baseUrl.trim()}
+                style={{ ...smallBtn, opacity: modelsLoading || !settings.baseUrl.trim() ? 0.5 : 1 }}
+                title="Load the model list from this endpoint"
+              >
+                {modelsLoading ? 'Loading…' : '↻ Fetch models'}
+              </button>
+            </div>
+            <datalist id="lingua-models">
+              {models.map((m) => <option key={m} value={m} />)}
+            </datalist>
+            {modelsError && <p style={{ ...hintStyle, color: '#B91C1C' }}>⚠ {modelsError}</p>}
+            {models.length > 0 && <p style={{ ...hintStyle, color: '#15803D' }}>✓ {models.length} models loaded — click the field and pick one, or keep typing.</p>}
             <p style={hintStyle}>e.g. gpt-4o-mini, llama3.2, mistral-7b</p>
           </div>
 
@@ -207,12 +363,12 @@ export function Settings() {
                 value={displayApiKey()}
                 onChange={(e) => {
                   setApiKeyDirty(true);
-                  setSettings({ ...settings, apiKey: e.target.value });
+                  patchActive({ apiKey: e.target.value });
                 }}
                 onFocus={() => {
                   if (!apiKeyDirty && savedApiKey && !showApiKey) {
                     setApiKeyDirty(true);
-                    setSettings(prev => ({ ...prev, apiKey: '' }));
+                    patchActive({ apiKey: '' });
                   }
                 }}
                 onBlur={e => {
@@ -220,7 +376,7 @@ export function Settings() {
                   e.currentTarget.style.boxShadow = 'none';
                   if (apiKeyDirty && !settings.apiKey) {
                     setApiKeyDirty(false);
-                    setSettings(prev => ({ ...prev, apiKey: savedApiKey }));
+                    patchActive({ apiKey: savedApiKey });
                   }
                 }}
                 placeholder="sk-..."
@@ -302,6 +458,37 @@ export function Settings() {
           >
             {saved ? '✓ Settings Saved!' : 'Save Settings'}
           </button>
+        </div>
+
+        {/* Task routing Card */}
+        <div style={cardStyle}>
+          <h2 style={{ margin: '0 0 6px', fontSize: '16px', fontWeight: 700, color: '#1A1A2E' }}>
+            Model per task
+          </h2>
+          <p style={{ margin: '0 0 16px', fontSize: '13px', color: '#6B7280' }}>
+            Send each kind of request to a different profile — for example a fast, cheap model for Translate and a stronger one for Explain. Remember to press Save Settings above.
+          </p>
+          {ROUTING_GROUPS.map(({ key, label }) => {
+            const profiles = settings.profiles ?? [];
+            const active = profiles.find((p) => p.id === settings.activeProfileId);
+            return (
+              <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
+                <div style={{ flex: 1, fontSize: '13px', color: '#374151' }}>{label}</div>
+                <select
+                  value={settings.actionProfiles?.[key] ?? ''}
+                  onChange={(e) =>
+                    setSettings((prev) => ({ ...prev, actionProfiles: { ...prev.actionProfiles, [key]: e.target.value || undefined } }))
+                  }
+                  style={{ ...inputStyle, width: '230px', padding: '8px 10px', fontSize: '13px', cursor: 'pointer' }}
+                >
+                  <option value="">Active profile{active ? ` (${active.name})` : ''}</option>
+                  {profiles.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}{p.model ? ` · ${p.model}` : ''}</option>
+                  ))}
+                </select>
+              </div>
+            );
+          })}
         </div>
 
         {/* Language & Voice Card */}

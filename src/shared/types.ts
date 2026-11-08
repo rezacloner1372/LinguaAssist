@@ -10,6 +10,18 @@ export type Action =
   | 'translate_to_english'
   | 'fix_grammar';
 
+/** One saved connection: endpoint + key + model */
+export interface LLMProfile {
+  id: string;
+  name: string;
+  baseUrl: string;
+  model: string;
+  apiKey: string;
+}
+
+/** Groups of features that can each be routed to a different profile */
+export type ActionGroup = 'translate' | 'explain' | 'rewrite' | 'page';
+
 export interface LLMSettings {
   baseUrl: string;
   model: string;
@@ -22,6 +34,14 @@ export interface LLMSettings {
   targetLangB?: string;
   /** Show 🔊 Listen buttons on results (default true) */
   ttsEnabled?: boolean;
+  /**
+   * Saved connections. The top-level baseUrl/model/apiKey above always mirror
+   * the ACTIVE profile, so code that only needs "the" connection keeps working.
+   */
+  profiles?: LLMProfile[];
+  activeProfileId?: string;
+  /** Route a feature group to a specific profile (default: the active one) */
+  actionProfiles?: Partial<Record<ActionGroup, string>>;
   /** Show the floating ✦ Page button (default true) */
   showPageButton?: boolean;
   /** Hostnames where LinguaAssist's on-page UI (trigger + Page button) is off */
@@ -117,6 +137,11 @@ export interface MessageToBackgroundPageChat {
 export interface MessageToBackgroundTtsSpeak {
   type: 'TTS_SPEAK';
   payload: TtsSpeakRequest;
+}
+
+export interface MessageToBackgroundListModels {
+  type: 'LIST_MODELS';
+  payload: { baseUrl: string; apiKey: string };
 }
 
 export interface MessageToBackgroundTtsStop {

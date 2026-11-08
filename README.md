@@ -146,6 +146,10 @@ Start Ollama first: `ollama serve`
 2. Click **Read Page** to extract content.
 3. **Summarize** for a structured summary, or **Chat with Page** to ask questions ("What are the key takeaways?", "Summarize section 2.").
 
+### Profiles, models and per-task routing
+
+In **Settings → LLM Configuration**, use **＋ New** to add more connections and the **Profile** dropdown to switch the default. **↻ Fetch models** lists the models available at the endpoint. Under **Model per task** you can send Translate, Explain, Grammar/rewrite and Page summarize/chat to different profiles. Everything else uses the selected profile. Press **Save Settings** to apply.
+
 ### Right-click menu and shortcut
 
 Select text, right-click and choose **LinguaAssist → Translate / Explain / …** to run an action immediately, or press **Alt+Shift+L** to open the panel (rebind it at `chrome://extensions/shortcuts`). Translating a single word returns a dictionary-style entry. Use **■ Stop** to cancel a response and **↻** to regenerate it.

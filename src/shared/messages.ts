@@ -4,6 +4,7 @@ import type {
   MessageToBackgroundPageSummarize,
   MessageToBackgroundTtsSpeak,
   MessageToBackgroundTtsStop,
+  MessageToBackgroundListModels,
   MessageResponse,
   LLMRequest,
   LLMSettings,
@@ -26,6 +27,14 @@ export function sendHealthCheck(payload: LLMSettings): Promise<MessageResponse> 
 export function sendPageSummarizeRequest(payload: PageSummarizeRequest): Promise<MessageResponse> {
   const message: MessageToBackgroundPageSummarize = { type: 'PAGE_SUMMARIZE', payload };
   return chrome.runtime.sendMessage(message);
+}
+
+/** Ask the worker to fetch the model list for an endpoint (resolves with ids in `data` as JSON). */
+export async function sendListModels(baseUrl: string, apiKey: string): Promise<string[]> {
+  const message: MessageToBackgroundListModels = { type: 'LIST_MODELS', payload: { baseUrl, apiKey } };
+  const response: MessageResponse = await chrome.runtime.sendMessage(message);
+  if (!response.success) throw new Error(response.error ?? 'Could not load models.');
+  return JSON.parse(response.data ?? '[]') as string[];
 }
 
 export function sendTtsSpeak(payload: { text: string; lang?: string }): Promise<MessageResponse> {

@@ -7,6 +7,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Added
 
+- **LLM profiles** — save several connections (endpoint, key, model) and switch between them in Settings. Existing settings migrate to a "Default" profile automatically.
+- **Model dropdown** — "Fetch models" loads the model list from the endpoint's `/models` (OpenAI, Ollama, Groq, Together, …); you can still type any name.
+- **Model per task** — route Translate, Explain, Grammar/rewrite, and Page summarize/chat to different profiles (e.g. a cheap model for translation, a stronger one for Explain).
 - **Replace in place** — for selections inside inputs, textareas and rich-text editors, a **⤺ Replace** button writes the result over the selection (Fix Grammar, Formal, Casual, Draft Reply, Translate). It refuses to overwrite if the text changed in the meantime.
 - **Stop / Regenerate** controls for text actions, manual translate, page summary and chat.
 - **Dictionary mode** — translating a single word returns a dictionary-style entry (pronunciation, translations, meaning, examples, synonyms).

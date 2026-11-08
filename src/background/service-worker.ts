@@ -1,4 +1,4 @@
-import { getSettings } from '../shared/storage';
+import { getSettings, resolveForGroup, groupForAction } from '../shared/storage';
 import { detectLangTag, isSingleWord } from '../shared/textDirection';
 import type {
     MessageToBackground,
@@ -6,6 +6,7 @@ import type {
     MessageToBackgroundPageSummarize,
     MessageToBackgroundTtsSpeak,
     MessageToBackgroundTtsStop,
+    MessageToBackgroundListModels,
     MessageResponse,
     LLMSettings,
     Action,
@@ -23,7 +24,8 @@ type IncomingMessage =
     | MessageToBackgroundHealthCheck
     | MessageToBackgroundPageSummarize
     | MessageToBackgroundTtsSpeak
-    | MessageToBackgroundTtsStop;
+    | MessageToBackgroundTtsStop
+    | MessageToBackgroundListModels;
 
 const DEFAULT_MAX_CONTEXT_TOKENS = 8000;
 const SUMMARY_MAX_TOKENS = 1500;
@@ -136,6 +138,23 @@ function buildAuthHeaders(settings: LLMSettings): Record<string, string> {
 /** Reasoning models (o-series, GPT-5) reject `max_tokens` and custom `temperature`. */
 function isReasoningModel(model: string): boolean {
     return /^(o\d|gpt-5)/i.test(model.trim());
+}
+
+/** GET {baseUrl}/models and return the model ids (OpenAI, Ollama, Groq, Together… share this shape). */
+async function listModels(baseUrl: string, apiKey: string): Promise<string[]> {
+    if (!baseUrl.trim()) throw new Error('Enter a Base URL first.');
+    const response = await fetch(baseUrl.replace(/\/$/, '') + '/models', {
+        headers: buildAuthHeaders({ baseUrl, apiKey, model: '' }),
+        signal: AbortSignal.timeout(15000),
+    });
+    await throwIfNotOk(response);
+    const data = await response.json();
+    const list: unknown[] = Array.isArray(data) ? data : data?.data ?? data?.models ?? [];
+    const ids = list
+        .map((m) => (typeof m === 'string' ? m : (m as { id?: string; name?: string })?.id ?? (m as { name?: string })?.name))
+        .filter((id): id is string => typeof id === 'string' && id !== '');
+    if (ids.length === 0) throw new Error('No models found at this endpoint.');
+    return [...new Set(ids)].sort((a, b) => a.localeCompare(b));
 }
 
 function chatUrl(settings: LLMSettings): string {
@@ -370,7 +389,8 @@ chrome.runtime.onMessage.addListener(
 
         if (message.type === 'LLM_REQUEST') {
             const { action } = message.payload;
-            getSettings().then((settings) => {
+            getSettings().then((all) => {
+                const settings = resolveForGroup(all, groupForAction(action));
                 if (!settings.baseUrl || !settings.model) {
                     sendResponse({ success: false, error: 'LLM not configured. Please open Settings.' });
                     return;
@@ -402,7 +422,8 @@ chrome.runtime.onMessage.addListener(
 
         if (message.type === 'PAGE_SUMMARIZE') {
             const { pageContent } = message.payload;
-            getSettings().then((settings) => {
+            getSettings().then((all) => {
+                const settings = resolveForGroup(all, 'page');
                 if (!settings.baseUrl || !settings.model) {
                     sendResponse({ success: false, error: 'LLM not configured. Please open Settings.' });
                     return;
@@ -418,6 +439,13 @@ chrome.runtime.onMessage.addListener(
                     .then((result) => sendResponse({ success: true, data: result }))
                     .catch((err) => sendResponse({ success: false, error: err.message }));
             });
+            return true;
+        }
+
+        if (message.type === 'LIST_MODELS') {
+            listModels(message.payload.baseUrl, message.payload.apiKey)
+                .then((models) => sendResponse({ success: true, data: JSON.stringify(models) }))
+                .catch((err) => sendResponse({ success: false, error: err.message }));
             return true;
         }
 
@@ -454,7 +482,7 @@ function buildUserText(payload: LLMRequest): string {
 }
 
 async function handleTextActionStream(payload: LLMRequest, port: chrome.runtime.Port): Promise<void> {
-    const settings = await getSettings();
+    const settings = resolveForGroup(await getSettings(), groupForAction(payload.action));
     if (!settings.baseUrl || !settings.model) {
         port.postMessage({ type: 'ERROR', error: 'LLM not configured. Please open Settings.' });
         return;
@@ -463,7 +491,7 @@ async function handleTextActionStream(payload: LLMRequest, port: chrome.runtime.
 }
 
 async function handlePageSummarizeStream(payload: PageSummarizeRequest, port: chrome.runtime.Port): Promise<void> {
-    const settings = await getSettings();
+    const settings = resolveForGroup(await getSettings(), 'page');
     if (!settings.baseUrl || !settings.model) {
         port.postMessage({ type: 'ERROR', error: 'LLM not configured. Please open Settings.' });
         return;
@@ -477,7 +505,7 @@ async function handlePageSummarizeStream(payload: PageSummarizeRequest, port: ch
 async function handlePageChatStream(payload: PageChatRequest, port: chrome.runtime.Port): Promise<void> {
     const { pageContent, conversationHistory, userMessage } = payload;
 
-    const settings = await getSettings();
+    const settings = resolveForGroup(await getSettings(), 'page');
     if (!settings.baseUrl || !settings.model) {
         port.postMessage({ type: 'ERROR', error: 'LLM not configured. Please open Settings.' });
         return;
