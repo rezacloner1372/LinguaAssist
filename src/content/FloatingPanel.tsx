@@ -2,7 +2,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react';
 import type { Action, SelectionContext, PageContent, ChatMessage, PanelState, VocabEntry, LLMSettings } from '../shared/types';
 import { streamLLMRequest, streamPageChat, sendOpenOptions } from '../shared/messages';
 import { getSettings, saveVocabEntry } from '../shared/storage';
-import { isRTL, langPairLabel, isSingleWord } from '../shared/textDirection';
+import { isRTL, langPairLabel } from '../shared/textDirection';
 import type { ReplaceTarget } from './replaceTarget';
 import { extractPageContent } from './pageExtractor';
 import { renderMarkdown } from './markdown';
@@ -307,7 +307,7 @@ export function FloatingPanel({
     !!activeTextAction &&
     activeTextAction !== 'explain' &&
     activeTextAction !== 'summarize_selection' &&
-    !(TRANSLATE_ACTIONS.has(activeTextAction) && isSingleWord(selectedText)); // dictionary entry, not a drop-in
+    !textResult.includes('**Translation:**'); // a dictionary-style entry isn't a drop-in replacement
 
   const handleSaveVocab = useCallback(() => {
     const entry: VocabEntry = {

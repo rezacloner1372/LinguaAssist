@@ -19,6 +19,8 @@ export const FIXED_TEXT =
   'Hi team, I finished the report yesterday and sent it to the manager. Please check it.';
 
 export const MANUAL_INPUT = 'Where can I find the release notes for this version?';
+// A question on purpose: it must be translated, not answered
+export const TERM_INPUT = 'break the ice';
 
 export const ANSWERS = {
   explain: `**In this context:** the earlier lines describe servers that engineers named and nursed back to health by hand — the "pet" model.
@@ -26,6 +28,15 @@ export const ANSWERS = {
 So the sentence means: because rebuilding is now cheap and automated, teams replace a cluster instead of protecting it.`,
 
   translate: 'تیم‌هایی که استقرارهای خود را خودکار می‌کنند، سریع‌تر عرضه می‌کنند و آسوده‌تر می‌خوابند.',
+
+  term: `**break the ice** · idiom · /breɪk ði aɪs/
+**Translation:** یخ را شکستن؛ فضای صمیمی ایجاد کردن
+**Meaning:** to say or do something that makes people feel relaxed at the start of a meeting.
+**Synonyms:** warm up, get things started, loosen up.
+**Opposite:** create tension.
+**Example:**
+- A quick joke helped her break the ice at the meeting.
+- یک شوخی کوتاه به او کمک کرد تا در جلسه یخ را بشکند.`,
 
   manual: 'نسخه‌ی یادداشت‌های انتشار این نسخه را کجا می‌توانم پیدا کنم؟',
 

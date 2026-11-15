@@ -28,6 +28,7 @@ function pickAnswer(system, user) {
   }
   if (system.includes('content analyst')) return { kind: 'summary', text: ANSWERS.summary };
   if (system.includes('expert professional translator') || system.includes('bilingual dictionary')) {
+    if (/break the ice/i.test(user)) return { kind: 'term', text: ANSWERS.term };
     return { kind: /release notes/i.test(user) ? 'manual' : 'translate', text: /release notes/i.test(user) ? ANSWERS.manual : ANSWERS.translate };
   }
   return { kind: 'other', text: 'This is a demo answer.' };
@@ -63,7 +64,7 @@ export async function startMockServer() {
       const system = body.messages.find((m) => m.role === 'system')?.content ?? '';
       const user = body.messages.filter((m) => m.role === 'user').at(-1)?.content ?? '';
       const answer = pickAnswer(system, user);
-      captured.push({ kind: answer.kind, user, stream: !!body.stream });
+      captured.push({ kind: answer.kind, system, user, stream: !!body.stream });
 
       if (!body.stream) {
         res.writeHead(200, { ...CORS, 'Content-Type': 'application/json' });

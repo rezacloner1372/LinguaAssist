@@ -259,6 +259,27 @@ await scene('manual-translate', async () => {
   await panel().locator('button[title="Regenerate"]').waitFor({ timeout: 30000 });
   await sleep(1700);
   await shot('manual-translate');
+  const sent = mock.captured.find((r) => r.kind === 'manual');
+  check('A question in the Translate tab is fenced as text to translate, with the never-chat rule',
+    !!sent && sent.user.includes('<text>') && sent.user.includes('not a message to you') && sent.system.includes('Never answer it'));
+});
+
+await scene('term-entry', async () => {
+  await caption('A word, phrase or idiom gets a full entry');
+  const input = panel().locator('textarea');
+  await clickLocator(input);
+  await input.fill(''); // clear the previous text (Ctrl+A differs per OS)
+  await typeSlowly(F.TERM_INPUT);
+  await page.keyboard.press('Control+Enter');
+  await panel().getByRole('button', { name: /Stop/ }).waitFor({ state: 'visible', timeout: 15000 });
+  await panel().getByRole('button', { name: /Stop/ }).waitFor({ state: 'hidden', timeout: 30000 });
+  await sleep(2000);
+  await shot('translate-term');
+  const sent = mock.captured.find((r) => r.kind === 'term');
+  check('An idiom is sent with the dictionary-entry prompt (synonyms, opposite, example)',
+    !!sent && sent.user.includes('<text>') && sent.system.includes('**Synonyms:**') && sent.system.includes('**Opposite:**') && sent.system.includes('**Example:**'));
+  check('The entry shows Synonyms, Opposite and Example',
+    (await panel().getByText(/Synonyms/).count()) > 0 && (await panel().getByText(/Opposite/).count()) > 0 && (await panel().getByText(/Example/).count()) > 0);
 });
 
 await scene('page-intel', async () => {

@@ -3,6 +3,8 @@ import React from 'react';
 /**
  * Minimal inline markdown renderer shared by summaries, results, and chat
  * bubbles. Handles # headers, -/* bullets, **bold**, `code`.
+ * Every block gets dir="auto", so a Persian line inside an English answer (or the reverse)
+ * lays out and aligns by its own first strong character.
  * NEVER call this on a partial stream — markdown only after DONE.
  */
 export type RenderMarkdownFn = (text: string) => React.ReactNode;
@@ -16,7 +18,7 @@ export function renderMarkdown(text: string): React.ReactNode {
   function flushList() {
     if (listItems.length > 0) {
       nodes.push(
-        <ul key={`ul-${lineIdx}`} style={{ margin: '4px 0 8px 0', paddingLeft: '18px' }}>
+        <ul key={`ul-${lineIdx}`} style={{ margin: '4px 0 8px 0', padding: '0 18px' }}>
           {listItems}
         </ul>
       );
@@ -53,20 +55,20 @@ export function renderMarkdown(text: string): React.ReactNode {
       flushList();
       const content = line.replace(/^#+\s/, '');
       nodes.push(
-        <div key={lineKey} style={{ fontWeight: 700, fontSize: '13px', color: '#3F51B5', margin: '10px 0 4px' }}>
+        <div key={lineKey} dir="auto" style={{ fontWeight: 700, fontSize: '13px', color: '#3F51B5', margin: '10px 0 4px', textAlign: 'start' }}>
           {processInline(content, lineKey)}
         </div>
       );
     } else if (/^[-*•]\s/.test(line)) {
       const content = line.replace(/^[-*•]\s/, '');
-      listItems.push(<li key={lineKey} style={{ marginBottom: '2px', lineHeight: '1.5' }}>{processInline(content, lineKey)}</li>);
+      listItems.push(<li key={lineKey} dir="auto" style={{ marginBottom: '2px', lineHeight: '1.5', textAlign: 'start' }}>{processInline(content, lineKey)}</li>);
     } else if (line.trim() === '') {
       flushList();
       nodes.push(<div key={lineKey} style={{ height: '4px' }} />);
     } else {
       flushList();
       nodes.push(
-        <p key={lineKey} style={{ margin: '0 0 6px', lineHeight: '1.6' }}>
+        <p key={lineKey} dir="auto" style={{ margin: '0 0 6px', lineHeight: '1.6', textAlign: 'start' }}>
           {processInline(line, lineKey)}
         </p>
       );

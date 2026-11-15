@@ -3,6 +3,18 @@
 All notable changes to LinguaAssist are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **The Translate tab no longer chats.** Typing a question, a greeting, or an instruction made the model answer it instead of translating it. The translate prompts now state that the input is always text to translate (never a message to the model), and the text is sent fenced in `<text>` tags.
+- Mixed Persian/English results lay out correctly: every paragraph and bullet picks its own direction and alignment, instead of one direction for the whole result.
+
+### Changed
+
+- **Words, terms, phrases, and idioms get a full entry** — translation (an equivalent idiom for idioms, not word-for-word), meaning, synonyms, **opposites**, and example sentences with their translations on separate lines. A full sentence is just translated, naturally and readably. Previously only single words got an entry.
+- The ⤺ Replace button is hidden whenever the result is a word/phrase entry, so an entry can never overwrite your text.
+
 ## [1.2.3] — 2026-11-15
 
 ### Fixed

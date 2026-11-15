@@ -25,10 +25,20 @@ export function detectLangTag(text: string): string {
   return isRTL(text) ? 'fa-IR' : 'en-US';
 }
 
-/** A single word (letters, apostrophes, hyphens) — worth a dictionary entry. */
-export function isSingleWord(text: string): boolean {
-  const t = text.trim().replace(/^[\p{P}\p{S}]+|[\p{P}\p{S}]+$/gu, '');
-  return t.length > 0 && t.length <= 40 && /^[\p{L}\p{M}'’-]+$/u.test(t);
+/**
+ * A word, term, phrase or idiom — short, one line, no sentence punctuation inside.
+ * Leading/trailing punctuation and quotes are ignored, so a word selected as "company."
+ * still counts. Anything longer or punctuated is treated as a sentence and simply translated.
+ * This is only a cheap pre-check: the prompt also tells the model to translate (not look up)
+ * a text that turns out to be a complete sentence.
+ */
+export function isTermLike(text: string): boolean {
+  // A closing ? or ! means a real question/exclamation, unlike the stray "." or "," picked up when selecting a word
+  if (/[?!؟]["'”’»)\]]*\s*$/.test(text.trim())) return false;
+  const t = text.trim().replace(/^[\s\p{P}\p{S}]+|[\s\p{P}\p{S}]+$/gu, '');
+  if (!/\p{L}/u.test(t) || t.length > 60 || /[\r\n]/.test(t)) return false;
+  if (/[.,!?؟،…:;]/.test(t)) return false;
+  return t.split(/\s+/).length <= 6;
 }
 
 /** 'en→fa' style pair label for vocabulary entries. */

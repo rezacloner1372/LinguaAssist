@@ -41,7 +41,7 @@ _The demo is recorded automatically from the real extension against a fake local
 ### Text tools (on any selection)
 
 - 🔄 **Translate ⇄** — auto-detects direction between Persian and English, tuned for natural, native-quality output
-- 📖 **Dictionary mode** — translate a single word and get pronunciation, translations, meaning, examples, and synonyms
+- 📖 **Word, phrase & idiom entries** — translate a word, term, phrase, or idiom and get the translation, meaning, synonyms, opposites, and example sentences; a full sentence is simply translated, naturally and readably. The Translate tab never chats back
 - 💡 **Explain** — explains your selection *in context*, using about 10 lines of surrounding text
 - 📋 **Summarize** — condenses the selection into 2–4 bullet points
 - ✏️ **Fix Grammar / Formal / Casual / Draft Reply** — editing and tone tools that keep the original language
@@ -163,7 +163,7 @@ Start Ollama first: `ollama serve`
 ### Text actions
 
 1. Select text on any webpage — click the **✦ LinguaAssist** button that appears, right-click and choose **LinguaAssist →** an action, or press **Alt+Shift+L**.
-2. Pick an action: **Translate ⇄**, **Explain**, **Summarize**, **Fix Grammar**, **Formal**, **Casual**, or **Draft Reply**. Translating a single word returns a dictionary-style entry; **Explain** also reads the lines around your selection.
+2. Pick an action: **Translate ⇄**, **Explain**, **Summarize**, **Fix Grammar**, **Formal**, **Casual**, or **Draft Reply**. Translating a word, term, phrase, or idiom returns a full entry (translation, meaning, synonyms, opposite, examples), while a sentence is just translated; **Explain** also reads the lines around your selection.
 3. The result streams in progressively. Use **■ Stop** to cancel, **↻** to regenerate, **⎘ Copy Result** to copy, 🔊 to listen, or **📚 Save** to keep a translation.
 4. Close with **Esc** or **×**.
 
@@ -171,7 +171,7 @@ The shortcut can be rebound at `chrome://extensions/shortcuts`.
 
 ### Replace in place
 
-When the selection is inside an input, textarea, or rich-text editor (Gmail, Notion, …), results from Fix Grammar, Formal, Casual, Draft Reply, and Translate show a **⤺ Replace** button that writes the result over your selection. If the text was edited after you selected it, Replace refuses and you can use Copy instead. Explain, Summarize, and single-word dictionary results can't be replaced, and read-only or password fields never offer it.
+When the selection is inside an input, textarea, or rich-text editor (Gmail, Notion, …), results from Fix Grammar, Formal, Casual, Draft Reply, and Translate show a **⤺ Replace** button that writes the result over your selection. If the text was edited after you selected it, Replace refuses and you can use Copy instead. Explain, Summarize, and word/phrase entries can't be replaced, and read-only or password fields never offer it.
 
 ### Manual translate
 
