@@ -74,7 +74,8 @@ export function FloatingPanel({
   // ── Settings (TTS toggle) ──
   const [settings, setSettings] = useState<LLMSettings | null>(null);
   useEffect(() => {
-    getSettings().then(setSettings);
+    // If the extension was reloaded under this page, actions report a "refresh the page" hint instead
+    getSettings().then(setSettings).catch(() => undefined);
   }, []);
   const ttsEnabled = settings?.ttsEnabled !== false;
 
@@ -318,10 +319,12 @@ export function FloatingPanel({
       savedAt: Date.now(),
       langPair: langPairLabel(selectedText, textResult),
     };
-    saveVocabEntry(entry).then(() => {
-      setVocabSaved(true);
-      setTimeout(() => setVocabSaved(false), 2000);
-    });
+    saveVocabEntry(entry)
+      .then(() => {
+        setVocabSaved(true);
+        setTimeout(() => setVocabSaved(false), 2000);
+      })
+      .catch(() => undefined); // extension reloaded under this page — nothing was saved
   }, [selectedText, textResult]);
 
   // ── Stop in-flight streams (keep whatever has streamed so far) ──

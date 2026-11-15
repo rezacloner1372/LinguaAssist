@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { FloatingPanel } from './FloatingPanel';
 import type { Action, PageContent, PanelState, SelectionContext, MessageToContentOpenPanel } from '../shared/types';
+import { isExtensionAlive } from '../shared/messages';
 import { isTextField, makeFieldTarget, makeEditableTarget } from './replaceTarget';
 import type { ReplaceTarget } from './replaceTarget';
 import { getSettings, isSiteDisabled, withSite, withoutSite, saveDisabledSites, SETTINGS_KEY } from '../shared/storage';
@@ -268,6 +269,7 @@ function showTrigger(text: string, rect: DOMRect, selectionContext?: SelectionCo
   triggerBtn.addEventListener('mousedown', (e) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!isExtensionAlive()) return handleStale(true);
     const viewportX = rect.right;
     const viewportY = rect.bottom;
     openPanel(text, viewportX, viewportY, selectionContext, undefined, replaceTarget);
@@ -326,6 +328,7 @@ function createPageFab() {
   pageFab.addEventListener('click', (e) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!isExtensionAlive()) return handleStale(true);
     // Position the panel near the top-right area of the viewport (below toolbar)
     const PANEL_WIDTH_ESTIMATE = 360;
     const MIN_EDGE_MARGIN = 24;
@@ -338,7 +341,8 @@ function createPageFab() {
   document.body.appendChild(pageFab);
 }
 
-document.addEventListener('mouseup', (e) => {
+const onMouseUp = (e: MouseEvent) => {
+  if (!isExtensionAlive()) return handleStale(false);
   const target = e.target as HTMLElement;
   if (
     target?.id === 'lingua-assist-trigger' ||
@@ -356,10 +360,18 @@ document.addEventListener('mouseup', (e) => {
     if (cap && cap.text.length <= 5000) showTrigger(cap.text, cap.rect, cap.context, cap.replace);
     else removeTrigger();
   }, 200);
-});
+};
 
-document.addEventListener('mousedown', (e) => {
+const onMouseDown = (e: MouseEvent) => {
   const target = e.target as HTMLElement;
+  if (!isExtensionAlive()) {
+    // Pressing our own button/panel is clear intent — always explain; a click elsewhere just tears down quietly
+    const onOurUi =
+      target?.id === 'lingua-assist-trigger' ||
+      target?.id === 'lingua-assist-page-fab' ||
+      !!target?.closest?.('#lingua-assist-root');
+    return handleStale(onOurUi);
+  }
   if (
     target?.id === 'lingua-assist-trigger' ||
     target?.id === 'lingua-assist-page-fab' ||
@@ -368,14 +380,44 @@ document.addEventListener('mousedown', (e) => {
     return;
   }
   removeTrigger();
-});
+};
 
-document.addEventListener('keydown', (e) => {
+const onKeyDown = (e: KeyboardEvent) => {
+  if (!isExtensionAlive()) return handleStale(false);
   if (e.key === 'Escape') {
     removeTrigger();
     removePanel();
   }
-});
+};
+
+document.addEventListener('mouseup', onMouseUp);
+document.addEventListener('mousedown', onMouseDown);
+document.addEventListener('keydown', onKeyDown);
+
+// ─── Stale page: the extension was reloaded/updated while this page stayed open ──
+// The old content script keeps running but every chrome.* call throws "Extension context
+// invalidated". Instead of erroring, remove our UI and listeners and, if the user just tried
+// to use it, say what to do.
+
+let staleHandled = false;
+
+function handleStale(showHint: boolean) {
+  if (!staleHandled) {
+    staleHandled = true;
+    // If the user could see our UI (an open panel or selection button), explain why it is going away
+    if (shadowHost || triggerBtn) showHint = true;
+    document.removeEventListener('mouseup', onMouseUp);
+    document.removeEventListener('mousedown', onMouseDown);
+    document.removeEventListener('keydown', onKeyDown);
+    if (triggerTimeout) clearTimeout(triggerTimeout);
+    removeTrigger();
+    removePanel();
+    removePageFab();
+  }
+  if (showHint) {
+    showToast('LinguaAssist was updated or reloaded. Refresh this page to keep using it.', 'Refresh', () => location.reload());
+  }
+}
 
 // ─── Disable on this site (from the panel) ───────────────────────────────────
 
@@ -417,7 +459,11 @@ function showToast(message: string, actionLabel: string, onAction: () => void) {
 /** Add this site to the disabled list, hide the UI, and offer an Undo. */
 async function disableCurrentSite() {
   const host = location.hostname.replace(/^www\./, '');
-  await saveDisabledSites(withSite(await getSettings(), host));
+  try {
+    await saveDisabledSites(withSite(await getSettings(), host));
+  } catch {
+    return handleStale(true); // extension was reloaded under this page
+  }
   removeTrigger();
   removePanel(); // storage listener (applySiteSettings) then removes the Page button
   showToast(`LinguaAssist is off on ${host}. Manage in Settings → Disabled sites.`, 'Undo', async () => {
@@ -446,7 +492,7 @@ async function applySiteSettings() {
 }
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && changes[SETTINGS_KEY]) void applySiteSettings();
+  if (area === 'local' && changes[SETTINGS_KEY]) applySiteSettings().catch(() => handleStale(false));
 });
 
 // ─── Context menu / keyboard shortcut (sent by the service worker) ───────────
@@ -472,4 +518,4 @@ chrome.runtime.onMessage.addListener((message: MessageToContentOpenPanel) => {
   }
 });
 
-void applySiteSettings();
+applySiteSettings().catch(() => handleStale(false));

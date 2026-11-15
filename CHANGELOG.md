@@ -3,6 +3,12 @@
 All notable changes to LinguaAssist are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **"Extension context invalidated" errors.** After the extension is reloaded or updated, pages that were already open keep the old content script, whose every `chrome.*` call then throws. Those pages now clean up quietly (the buttons and listeners are removed), and if you press LinguaAssist's button or use an open panel you get a "Refresh this page" toast instead of red errors. Messaging, streaming and storage calls from the panel are also guarded, so a stale page can't produce unhandled errors.
+
 ## [1.2.4] — 2026-11-15
 
 ### Fixed
