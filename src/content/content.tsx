@@ -249,7 +249,7 @@ function showTrigger(text: string, rect: DOMRect, selectionContext?: SelectionCo
     transition: all 0.15s ease;
     letter-spacing: 0.01em;
   `;
-  triggerBtn.innerHTML = '✦ LinguaAssist';
+  triggerBtn.textContent = '✦ LinguaAssist';
   triggerBtn.title = 'Open LinguaAssist panel';
 
   triggerBtn.addEventListener('mouseenter', () => {
@@ -305,7 +305,7 @@ function createPageFab() {
     letter-spacing: 0.02em;
     opacity: 0.88;
   `;
-  pageFab.innerHTML = '✦ Page';
+  pageFab.textContent = '✦ Page';
   pageFab.title = 'Open LinguaAssist page intelligence';
 
   pageFab.addEventListener('mouseenter', () => {

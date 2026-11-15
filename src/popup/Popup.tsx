@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { AUTHOR_NAME, AUTHOR_URL, getVersion } from '../shared/about';
 import { getSettings, saveDisabledSites, isSiteDisabled, withSite, withoutSite } from '../shared/storage';
 
 const fontStack = "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Roboto, sans-serif";
@@ -133,7 +134,13 @@ export function Popup() {
         fontSize: '11px',
         color: '#C4C9E8',
       }}>
-        Your text stays private · v1.2.0
+        Your text stays private · v{getVersion()}
+        <div style={{ marginTop: '2px' }}>
+          Made by{' '}
+          <a href={AUTHOR_URL} target="_blank" rel="noreferrer" style={{ color: '#9FA8DA', textDecoration: 'none' }}>
+            {AUTHOR_NAME}
+          </a>
+        </div>
       </div>
     </div>
   );

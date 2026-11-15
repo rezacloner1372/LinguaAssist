@@ -365,7 +365,14 @@ function chunkForTts(text: string): string[] {
     return chunks.filter(Boolean);
 }
 
+// Firefox has no chrome.tts. __BROWSER__ is a build-time constant, so the Firefox
+// bundle contains none of the chrome.tts calls below. Where TTS is unavailable
+// the worker replies { success: false } and the Listen button falls back to the
+// in-page Web Speech API.
+const TTS_AVAILABLE = __BROWSER__ !== 'firefox' && typeof chrome.tts !== 'undefined';
+
 function speakText(text: string, lang?: string): void {
+    if (!TTS_AVAILABLE) throw new Error('chrome.tts is not available in this browser');
     chrome.tts.stop();
     const chunks = chunkForTts(text);
     const langTag = lang ?? detectLangTag(text);
@@ -461,7 +468,7 @@ chrome.runtime.onMessage.addListener(
         }
 
         if (message.type === 'TTS_STOP') {
-            chrome.tts.stop();
+            if (TTS_AVAILABLE) chrome.tts.stop();
             sendResponse({ success: true });
             return false;
         }
@@ -547,16 +554,6 @@ const MENU_ACTIONS: { id: Action; title: string }[] = [
     { id: 'reply_draft', title: 'Draft reply' },
 ];
 
-chrome.runtime.onInstalled.addListener(() => {
-    chrome.contextMenus.removeAll(() => {
-        chrome.contextMenus.create({ id: `${MENU_PREFIX}root`, title: 'LinguaAssist', contexts: ['selection'] });
-        for (const { id, title } of MENU_ACTIONS) {
-            chrome.contextMenus.create({ id: `${MENU_PREFIX}${id}`, parentId: `${MENU_PREFIX}root`, title, contexts: ['selection'] });
-        }
-        chrome.contextMenus.create({ id: `${MENU_PREFIX}open`, title: 'Open LinguaAssist panel', contexts: ['page'] });
-    });
-});
-
 function openPanelInTab(tabId: number | undefined, action?: Action, selectionText?: string): void {
     if (tabId === undefined) return;
     const message: MessageToContentOpenPanel = { type: 'OPEN_PANEL', action, selectionText };
@@ -564,19 +561,35 @@ function openPanelInTab(tabId: number | undefined, action?: Action, selectionTex
     chrome.tabs.sendMessage(tabId, message).catch(() => undefined);
 }
 
-chrome.contextMenus.onClicked.addListener((info, tab) => {
-    const id = String(info.menuItemId);
-    if (!id.startsWith(MENU_PREFIX)) return;
-    const key = id.slice(MENU_PREFIX.length);
-    if (key === 'open') {
-        openPanelInTab(tab?.id);
-    } else if (MENU_ACTIONS.some((a) => a.id === key)) {
-        openPanelInTab(tab?.id, key as Action, info.selectionText);
-    }
-});
+// Optional APIs (contextMenus, commands) are feature-detected so a browser or
+// platform without them (e.g. Firefox for Android) never breaks the worker.
+if (typeof chrome.contextMenus !== 'undefined') {
+    chrome.runtime.onInstalled.addListener(() => {
+        chrome.contextMenus.removeAll(() => {
+            chrome.contextMenus.create({ id: `${MENU_PREFIX}root`, title: 'LinguaAssist', contexts: ['selection'] });
+            for (const { id, title } of MENU_ACTIONS) {
+                chrome.contextMenus.create({ id: `${MENU_PREFIX}${id}`, parentId: `${MENU_PREFIX}root`, title, contexts: ['selection'] });
+            }
+            chrome.contextMenus.create({ id: `${MENU_PREFIX}open`, title: 'Open LinguaAssist panel', contexts: ['page'] });
+        });
+    });
 
-chrome.commands.onCommand.addListener(async (command) => {
-    if (command !== 'open-panel') return;
-    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    openPanelInTab(tab?.id);
-});
+    chrome.contextMenus.onClicked.addListener((info, tab) => {
+        const id = String(info.menuItemId);
+        if (!id.startsWith(MENU_PREFIX)) return;
+        const key = id.slice(MENU_PREFIX.length);
+        if (key === 'open') {
+            openPanelInTab(tab?.id);
+        } else if (MENU_ACTIONS.some((a) => a.id === key)) {
+            openPanelInTab(tab?.id, key as Action, info.selectionText);
+        }
+    });
+}
+
+if (typeof chrome.commands !== 'undefined') {
+    chrome.commands.onCommand.addListener(async (command) => {
+        if (command !== 'open-panel') return;
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        openPanelInTab(tab?.id);
+    });
+}

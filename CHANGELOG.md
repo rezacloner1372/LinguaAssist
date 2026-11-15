@@ -3,6 +3,21 @@
 All notable changes to LinguaAssist are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Firefox support** (Firefox 140+, desktop). `npm run build` now produces separate Chrome and Firefox builds in `dist/chrome/` and `dist/firefox/`; the Firefox manifest uses an event-page background, a permanent add-on ID, and the required data-collection declaration.
+- `npm run package` builds the store upload files (Chrome zip, Firefox zip, and the source zip AMO requires); `npm run start:firefox` and `npm run lint:firefox` for testing.
+- [docs/PUBLISHING.md](docs/PUBLISHING.md) — Chrome Web Store and Firefox Add-ons submission guide with listing text.
+
+### Changed
+
+- Authorship: copyright, `package.json` author/homepage/repository/license, `homepage_url` in both manifests, and an **About** card in Settings plus a popup footer credit. The version shown in the popup and Settings now comes from the manifest instead of a hardcoded string.
+- Removed the unused `activeTab` and `scripting` permissions.
+- Listen falls back to the browser's Web Speech API where `chrome.tts` does not exist (Firefox); context menu, shortcut, and TTS code are feature-detected so a missing API cannot break the background script.
+- The floating buttons set their label with `textContent` instead of `innerHTML`.
+
 ## [1.2.0] — 2026-11-08
 
 ### Added

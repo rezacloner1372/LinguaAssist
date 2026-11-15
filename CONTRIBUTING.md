@@ -8,17 +8,21 @@ Thanks for your interest in improving LinguaAssist! This document covers the dev
 git clone https://github.com/rezacloner1372/LinguaAssist.git
 cd LinguaAssist
 npm install
-npm run dev    # watch build → dist/
+npm run dev    # watch build (Chrome) → dist/chrome/
+npm run dev:firefox    # watch build (Firefox) → dist/firefox/
 ```
 
-Load `dist/` as an unpacked extension (`chrome://extensions` → Developer mode → Load unpacked). After every rebuild, refresh the extension card **and** reload any tabs where you test content scripts.
+Load `dist/chrome/` as an unpacked extension (`chrome://extensions` → Developer mode → Load unpacked). After every rebuild, refresh the extension card **and** reload any tabs where you test content scripts.
 
 ## Development commands
 
 | Command | Purpose |
 |---------|---------|
 | `npm run dev` | Webpack watch mode; rebuilds on save |
-| `npm run build` | Production build (minified) → `dist/` |
+| `npm run build` | Production build (minified) of both browsers → `dist/chrome/` and `dist/firefox/` |
+| `npm run start:firefox` | Open Firefox with the Firefox build loaded |
+| `npm run lint:firefox` | Run Mozilla's add-on linter on the Firefox build |
+| `npm run package` | Build and zip store uploads into `release/` (see [docs/PUBLISHING.md](docs/PUBLISHING.md)) |
 | `npm run type-check` | TypeScript check without emitting |
 
 Run `npm run type-check` before opening a PR — CI and review will expect it clean.
@@ -46,7 +50,7 @@ Use [Conventional Commits](https://www.conventionalcommits.org/) prefixes: `feat
 
 1. Fork or branch off `main`.
 2. Keep PRs focused — one feature or fix per PR.
-3. Verify: `npm run type-check` clean, `npm run build` succeeds, and you exercised the change in Chrome with a configured LLM endpoint.
+3. Verify: `npm run type-check` clean, `npm run build` succeeds, and you exercised the change in Chrome (and in Firefox if it touches the background script, TTS, or the manifest) with a configured LLM endpoint.
 4. Describe what changed, why, and how you tested it.
 
 ## Reporting issues

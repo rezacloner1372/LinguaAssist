@@ -3,7 +3,8 @@
   "name": "LinguaAssist",
   "version": "1.2.0",
   "description": "Bilingual Persian/English assistant — translate, explain, rewrite, summarize, and chat using your own LLM",
-  "permissions": ["storage", "activeTab", "scripting", "tts", "contextMenus"],
+  "homepage_url": "https://github.com/rezacloner1372/LinguaAssist",
+  "permissions": ["storage", "tts", "contextMenus"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"

@@ -8,7 +8,8 @@ Translate, explain, and rewrite selected text; summarize and chat with entire pa
 powered by your own OpenAI-compatible LLM endpoint.
 
 [![Version](https://img.shields.io/badge/version-1.2.0-5C6BC0.svg)](https://github.com/rezacloner1372/LinguaAssist)
-[![Chrome](https://img.shields.io/badge/Chrome-Manifest%20V3-4285F4.svg)](https://developer.chrome.com/docs/extensions/develop)
+[![Chrome](https://img.shields.io/badge/Chrome-114%2B-4285F4.svg)](https://developer.chrome.com/docs/extensions/develop)
+[![Firefox](https://img.shields.io/badge/Firefox-140%2B-FF7139.svg)](https://extensionworkshop.com/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
@@ -68,24 +69,39 @@ powered by your own OpenAI-compatible LLM endpoint.
 
 ## Installation
 
+### Supported browsers
+
+| Browser | Version | Notes |
+|---------|---------|-------|
+| **Google Chrome** | 114+ | Also works in Microsoft Edge, Brave, Opera, and Vivaldi using the Chrome package |
+| **Mozilla Firefox** | 140+ (desktop) | Listen uses the browser's built-in Web Speech voices |
+
+Works on **Windows, macOS, Linux, and ChromeOS** — the extension is the same on every operating system. Not supported yet: Firefox for Android, Chrome on Android/iOS (no extension support), and Safari.
+
+### From a release
+
+Download the zip for your browser from the [Releases](https://github.com/rezacloner1372/LinguaAssist/releases) page and unzip it.
+
+- **Chrome / Edge / Brave:** open `chrome://extensions`, enable **Developer mode**, click **Load unpacked**, and select the unzipped folder.
+- **Firefox:** open `about:debugging#/runtime/this-firefox`, click **Load Temporary Add-on…**, and select the `manifest.json` inside the unzipped folder. (Temporary add-ons are removed when Firefox restarts; the Firefox Add-ons listing installs permanently once published.)
+
 ### From source (development)
 
-**Prerequisites:** Node.js 18+, npm 9+, Google Chrome 114+.
+**Prerequisites:** Node.js 20+ (24 recommended), npm 9+, and Chrome 114+ or Firefox 140+.
 
 ```bash
 git clone https://github.com/rezacloner1372/LinguaAssist.git
 cd LinguaAssist
 npm install
-npm run build          # or: npm run dev  (watch mode)
+npm run build          # builds BOTH → dist/chrome and dist/firefox
 ```
 
-Then load it in Chrome:
+Then load it:
 
-1. Open `chrome://extensions`.
-2. Enable **Developer mode** (top-right toggle).
-3. Click **Load unpacked** and select the `dist/` folder.
+- **Chrome:** `chrome://extensions` → **Developer mode** → **Load unpacked** → select `dist/chrome/`.
+- **Firefox:** run `npm run start:firefox` (opens Firefox with the extension loaded), or use `about:debugging` as above with `dist/firefox/manifest.json`.
 
-> After each rebuild during development, click the 🔄 refresh icon on the extension card, and reload any open tabs so content scripts update.
+> During development use `npm run dev` (Chrome) or `npm run dev:firefox` for watch mode. After each rebuild, click the 🔄 refresh icon on the extension card and reload open tabs so content scripts update.
 
 ---
 
@@ -202,8 +218,13 @@ LinguaAssist/
 │       ├── textDirection.ts     # RTL detection, language-pair labels
 │       ├── theme.ts             # Shared theme tokens
 │       └── types.ts             # Shared TypeScript types
-├── manifest.json                # Chrome Extension Manifest V3
-└── webpack.config.js            # Build configuration
+├── scripts/
+│   ├── manifest.js              # Derives the Chrome / Firefox manifests
+│   └── package.mjs              # Builds the store upload zips (npm run package)
+├── docs/
+│   └── PUBLISHING.md            # Store submission guide and listing text
+├── manifest.json                # Base Manifest V3 (Chrome); Firefox variant generated at build
+└── webpack.config.js            # Build configuration (--env browser=chrome|firefox)
 ```
 
 ## Architecture
@@ -221,12 +242,16 @@ Streaming flows: `FloatingPanel` → `streamLLMRequest` (port) → service worke
 ## Development
 
 ```bash
-npm run dev          # Webpack watch mode → dist/
-npm run build        # Production build (minified)
-npm run type-check   # TypeScript, no emit
+npm run dev            # Watch build (Chrome) → dist/chrome/
+npm run dev:firefox    # Watch build (Firefox) → dist/firefox/
+npm run build          # Production build of both browsers (minified)
+npm run start:firefox  # Launch Firefox with the extension loaded
+npm run lint:firefox   # Mozilla's add-on linter
+npm run package        # Build + zip for the Chrome and Firefox stores → release/
+npm run type-check     # TypeScript, no emit
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, conventions, and PR process. Changes are tracked in [CHANGELOG.md](CHANGELOG.md).
+Publishing to the Chrome Web Store and Firefox Add-ons is covered in [docs/PUBLISHING.md](docs/PUBLISHING.md). See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, conventions, and PR process. Changes are tracked in [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
@@ -235,7 +260,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, conventions, and PR pro
 | Symptom | Cause & Fix |
 |---------|-------------|
 | `404 Not Found` on requests | Base URL is wrong. It must be the OpenAI-compatible root **including `/v1`** — e.g. `https://api.example.com/v1`, not `https://api.example.com` or a `/anthropic` path (that's a different API). Compare with a working `curl` to `{baseUrl}/chat/completions`. |
-| Buttons do nothing after code changes | Stale build — rerun `npm run build`, refresh the extension in `chrome://extensions`, and reload the tab. |
+| Buttons do nothing after code changes | Stale build — rerun `npm run build`, refresh the extension in `chrome://extensions` (Chrome) or `about:debugging` (Firefox), and reload the tab. |
+| 🔊 Listen is silent in Firefox | Firefox uses your system's speech voices. Install a Persian voice in your OS settings to read Persian text. |
 | Streaming errors mid-response | If streaming fails before any text arrives, the worker retries once without streaming; after partial output the error is shown instead, so text is never duplicated. Check the worker console (extension card → *service worker* link). |
 | `max_tokens` / `temperature` rejected | Reasoning models (o-series, GPT-5) are detected by name and sent `max_completion_tokens` with no temperature. For other models with unusual rules, open an issue with the error. |
 | ↻ Fetch models fails | The endpoint must serve `GET {baseUrl}/models`. Some gateways don't — type the model name by hand instead. |
@@ -256,6 +282,10 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the workflow, conventions, and PR pro
 
 ---
 
+## Author
+
+Created and maintained by **Mohammadreza Saberi** — [@rezacloner1372](https://github.com/rezacloner1372). Bug reports and ideas are welcome via [GitHub Issues](https://github.com/rezacloner1372/LinguaAssist/issues).
+
 ## License
 
-Released under the [MIT License](LICENSE).
+Released under the [MIT License](LICENSE) — © 2026 Mohammadreza Saberi.

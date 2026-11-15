@@ -1,6 +1,6 @@
 # LinguaAssist Privacy Policy
 
-_Last updated: 2026-11-08_
+_Last updated: 2026-11-15_
 
 ## Summary
 
@@ -45,12 +45,15 @@ Requests go directly from your browser to your chosen LLM provider. Once content
 | Permission | Reason |
 |------------|--------|
 | `storage` | Save your settings, API key, and saved vocabulary locally |
-| `activeTab` / `scripting` | Show the assistant panel on the page you are viewing |
 | `host_permissions` | The assistant works on any website, and your LLM endpoint can be any host you configure |
-| `tts` | Read results aloud (Listen feature) |
+| `tts` (Chrome only) | Read results aloud (Listen feature); Firefox uses the page's built-in speech synthesis instead |
 | `contextMenus` | Add the right-click menu (Translate, Explain, …) for selected text |
 
 The extension also registers an optional keyboard shortcut (Alt+Shift+L by default) that you can rebind or remove at `chrome://extensions/shortcuts`.
+
+## Firefox data-collection declaration
+
+The Firefox version declares two required data types in its manifest, because that is what the extension transmits to the endpoint **you** configure when you trigger an action: **website content** (selected text, typed text, page content) and **authentication information** (the API key you entered, sent only as the authentication header to your own endpoint). Nothing is sent to the developer or any other party.
 
 ## Changes to this policy
 
@@ -58,4 +61,4 @@ Material changes will be posted in this repository and reflected in the "Last up
 
 ## Contact
 
-Open an issue at [github.com/rezacloner1372/LinguaAssist/issues](https://github.com/rezacloner1372/LinguaAssist/issues) for any privacy-related questions.
+LinguaAssist is developed by Mohammadreza Saberi ([@rezacloner1372](https://github.com/rezacloner1372)). For any privacy-related questions, open an issue at [github.com/rezacloner1372/LinguaAssist/issues](https://github.com/rezacloner1372/LinguaAssist/issues) or email zigmax2013@gmail.com.

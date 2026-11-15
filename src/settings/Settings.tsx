@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { getSettings, saveSettings, getVocab, deleteVocabEntry, normalizeSite, newProfileId, saveDisabledSites, withSite, SETTINGS_KEY } from '../shared/storage';
 import { sendHealthCheck, sendListModels } from '../shared/messages';
 import { isRTL } from '../shared/textDirection';
+import { AUTHOR_NAME, AUTHOR_HANDLE, AUTHOR_URL, REPO_URL, ISSUES_URL, getVersion } from '../shared/about';
 import type { LLMSettings, LLMProfile, ActionGroup, HealthStatus, VocabEntry } from '../shared/types';
 
 const ROUTING_GROUPS: { key: ActionGroup; label: string }[] = [
@@ -832,14 +833,26 @@ export function Settings() {
           <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: '13px', color: '#374151', lineHeight: '1.7' }}>
             <li>Text is only sent when you explicitly trigger an action.</li>
             <li>Nothing is stored after a response, except vocabulary entries you save explicitly — those stay in local storage only.</li>
-            <li>Your API key is stored in Chrome's local extension storage only (never synced).</li>
+            <li>Your API keys are stored in your browser's local extension storage only (never synced).</li>
             <li>No data is collected or transmitted to LinguaAssist servers.</li>
             <li>All requests go directly from your browser to your configured LLM endpoint.</li>
           </ul>
         </div>
 
+        {/* About card */}
+        <div style={{ ...cardStyle, textAlign: 'center', marginBottom: '12px' }}>
+          <div style={{ fontSize: '15px', fontWeight: 700, color: '#1A1A2E' }}>✦ LinguaAssist <span style={{ fontWeight: 400, color: '#9CA3AF' }}>v{getVersion()}</span></div>
+          <p style={{ margin: '6px 0 12px', fontSize: '13px', color: '#6B7280' }}>
+            Made by <strong style={{ color: '#374151' }}>{AUTHOR_NAME}</strong> (<a href={AUTHOR_URL} target="_blank" rel="noreferrer" style={{ color: '#5C6BC0' }}>@{AUTHOR_HANDLE}</a>) · Open source under the MIT license
+          </p>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '16px', fontSize: '13px' }}>
+            <a href={REPO_URL} target="_blank" rel="noreferrer" style={{ color: '#5C6BC0' }}>Source & releases</a>
+            <a href={ISSUES_URL} target="_blank" rel="noreferrer" style={{ color: '#5C6BC0' }}>Report an issue</a>
+          </div>
+        </div>
+
         <div style={{ textAlign: 'center', fontSize: '12px', color: '#C4C9E8' }}>
-          LinguaAssist v1.1.0 · Open source · Your AI, your data
+          Open source · Your AI, your data
         </div>
       </div>
     </div>

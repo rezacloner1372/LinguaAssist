@@ -1,10 +1,31 @@
 {
   "name": "lingua-assist",
   "version": "1.2.0",
+  "description": "Bilingual Persian ⇄ English AI assistant for Chrome and Firefox — translate, explain, rewrite and summarize with your own LLM",
+  "author": {
+    "name": "Mohammadreza Saberi",
+    "url": "https://github.com/rezacloner1372"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/rezacloner1372/LinguaAssist#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/rezacloner1372/LinguaAssist.git"
+  },
+  "bugs": {
+    "url": "https://github.com/rezacloner1372/LinguaAssist/issues"
+  },
   "private": true,
   "scripts": {
-    "build": "webpack --mode production",
-    "dev": "webpack --mode development --watch",
+    "build": "npm run build:chrome && npm run build:firefox",
+    "build:chrome": "webpack --mode production --env browser=chrome",
+    "build:firefox": "webpack --mode production --env browser=firefox",
+    "build-for-amo": "npm run build:firefox",
+    "dev": "webpack --mode development --watch --env browser=chrome",
+    "dev:firefox": "webpack --mode development --watch --env browser=firefox",
+    "lint:firefox": "web-ext lint --source-dir dist/firefox",
+    "start:firefox": "web-ext run --source-dir dist/firefox",
+    "package": "node scripts/package.mjs",
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
@@ -21,6 +42,7 @@
     "style-loader": "^3.3.3",
     "ts-loader": "^9.5.1",
     "typescript": "^5.3.3",
+    "web-ext": "10.8.0",
     "webpack": "^5.89.0",
     "webpack-cli": "^5.1.4"
   }
