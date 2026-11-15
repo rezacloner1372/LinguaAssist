@@ -3,6 +3,17 @@
 All notable changes to LinguaAssist are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Animated demo and fresh screenshots.** `npm run demo` records a GIF, MP4 and 1280×800 screenshots by driving the real extension in Chromium against a fake local AI (no API key, same output every run). It also asserts that Explain sends context, Replace writes the text, and Persian renders right-to-left. See [`demo/`](demo/README.md).
+
+### Fixed
+
+- **Result buttons were reachable only by scrolling.** The Copy / Replace / Regenerate / Listen row is now pinned to the bottom of the result area, so tall results (long selections, long answers) can no longer push it out of view. Found while recording the demo.
+- The panel now grows taller (up to 680 px, within the window) so results aren't squeezed into one or two lines, and the result no longer has a second, nested scrollbar.
+
 ## [1.2.1] — 2026-11-15
 
 ### Added

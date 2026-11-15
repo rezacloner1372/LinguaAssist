@@ -51,7 +51,7 @@ const fontStack = "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', Robot
 // Panel sizing constants
 const PANEL_WIDTH_NORMAL = 360;
 const PANEL_WIDTH_CHAT = 400;
-const PANEL_MAX_HEIGHT_NORMAL = 560;
+const PANEL_MAX_HEIGHT_NORMAL = 680; // grows with the window so results aren't squeezed; shrinks to fit short windows
 const PANEL_MAX_HEIGHT_CHAT = 600;
 
 export function FloatingPanel({
@@ -156,7 +156,13 @@ export function FloatingPanel({
   let top = anchorY + 8;
   if (left + panelWidth > window.innerWidth - padding) left = window.innerWidth - panelWidth - padding;
   if (left < padding) left = padding;
-  const estimatedHeight = chatOpen ? PANEL_MAX_HEIGHT_CHAT : activeView === 'page' ? 500 : 460;
+  const panelMaxHeight = Math.max(
+    320,
+    Math.min(chatOpen ? PANEL_MAX_HEIGHT_CHAT : PANEL_MAX_HEIGHT_NORMAL, window.innerHeight - 2 * padding),
+  );
+  const estimatedHeight = chatOpen
+    ? panelMaxHeight
+    : Math.min(panelMaxHeight, activeView === 'page' ? 500 : textResult ? 640 : 460);
   if (top + estimatedHeight > window.innerHeight - padding) top = Math.max(padding, anchorY - estimatedHeight - 8);
   if (top < padding) top = padding;
 
@@ -549,6 +555,16 @@ export function FloatingPanel({
     flexShrink: 0,
   };
 
+  // Result action row (Copy / Replace / Regenerate / Listen): stay pinned to the bottom of
+  // the scrolling result area, so tall results never push the buttons out of reach.
+  const stickyActions: React.CSSProperties = {
+    position: 'sticky',
+    bottom: '-10px',
+    background: '#FFFFFF',
+    padding: '8px 0 10px',
+    zIndex: 1,
+  };
+
   const actionHover = {
     onMouseEnter: (e: React.MouseEvent<HTMLButtonElement>) => {
       e.currentTarget.style.background = '#EEF0FF';
@@ -606,7 +622,7 @@ export function FloatingPanel({
         left: `${panelLeft}px`,
         top: `${panelTop}px`,
         width: `${panelWidth}px`,
-        maxHeight: `${chatOpen ? PANEL_MAX_HEIGHT_CHAT : PANEL_MAX_HEIGHT_NORMAL}px`,
+        maxHeight: `${panelMaxHeight}px`,
         background: '#FFFFFF',
         borderRadius: '16px',
         boxShadow: '0 8px 32px rgba(0,0,0,0.14), 0 2px 8px rgba(0,0,0,0.08)',
@@ -1015,8 +1031,6 @@ export function FloatingPanel({
                     fontSize: '14px',
                     color: '#1A1A2E',
                     lineHeight: '1.7',
-                    maxHeight: '160px',
-                    overflowY: 'auto',
                     textAlign: textResultRtl ? 'right' : 'left',
                   }}
                 >
@@ -1026,7 +1040,7 @@ export function FloatingPanel({
                     renderMarkdown(textResult)
                   )}
                 </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', ...stickyActions }}>
                   {textState === 'loading' && (
                     <button onClick={handleTextStop} style={miniBtnStyle} title="Stop generating">■ Stop</button>
                   )}
@@ -1204,8 +1218,6 @@ export function FloatingPanel({
                     fontSize: '14px',
                     color: '#1A1A2E',
                     lineHeight: '1.7',
-                    maxHeight: '160px',
-                    overflowY: 'auto',
                     textAlign: manualResultRtl ? 'right' : 'left',
                   }}
                 >
@@ -1215,7 +1227,7 @@ export function FloatingPanel({
                     renderMarkdown(manualResult)
                   )}
                 </div>
-                <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', ...stickyActions }}>
                   {manualState === 'loading' && (
                     <button onClick={handleManualStop} style={miniBtnStyle} title="Stop generating">■ Stop</button>
                   )}

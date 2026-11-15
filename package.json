@@ -26,7 +26,9 @@
     "lint:firefox": "web-ext lint --source-dir dist/firefox",
     "start:firefox": "web-ext run --source-dir dist/firefox",
     "package": "node scripts/package.mjs",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "demo": "npm --prefix demo install --no-audit --no-fund && npm --prefix demo run setup && npm --prefix demo run record",
+    "demo:mock": "npm --prefix demo run mock"
   },
   "dependencies": {
     "react": "^18.2.0",

@@ -22,6 +22,7 @@ Load `dist/chrome/` as an unpacked extension (`chrome://extensions` → Develope
 | `npm run build` | Production build (minified) of both browsers → `dist/chrome/` and `dist/firefox/` |
 | `npm run start:firefox` | Open Firefox with the Firefox build loaded |
 | `npm run lint:firefox` | Run Mozilla's add-on linter on the Firefox build |
+| `npm run demo` | Record the README demo GIF/MP4 and store screenshots into `demo/out/` (see [demo/README.md](demo/README.md)) |
 | `npm run package` | Build and zip store uploads into `release/` (see [docs/PUBLISHING.md](docs/PUBLISHING.md)) |
 | `npm run type-check` | TypeScript check without emitting |
 

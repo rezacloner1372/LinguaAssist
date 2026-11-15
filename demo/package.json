@@ -1,0 +1,14 @@
+{
+  "name": "linguaassist-demo",
+  "private": true,
+  "description": "Records the README demo and store screenshots by driving the built extension. Kept separate from the extension's own build.",
+  "type": "module",
+  "scripts": {
+    "setup": "playwright install chromium",
+    "record": "node record.mjs",
+    "mock": "node mock-llm-server.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.65.1"
+  }
+}

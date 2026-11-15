@@ -17,16 +17,22 @@ powered by your own OpenAI-compatible LLM endpoint.
 
 ---
 
-## Screenshots
+## Demo
+
+<div align="center">
+
+<img src="docs/media/demo.gif" alt="LinguaAssist demo: select a line and Explain it using the surrounding text, fix grammar and replace it in place, translate to Persian" width="800">
+
+</div>
 
 | | |
 |:---:|:---:|
-| ![Text Actions — Translate](public/screenshots/text-actions.png) | ![Manual Translate tab](public/screenshots/translate-tab.png) |
-| **Text Actions — Translate ⇄** | **Manual Translate tab** |
-| ![Page Intelligence](public/screenshots/page-intel.png) | ![Casual rewrite](public/screenshots/casual.png) |
-| **Page Intelligence — Read, Summarize, Chat** | **Casual rewrite** |
-| ![Draft Reply](public/screenshots/draft-reply.png) | |
-| **Draft Reply** | |
+| ![Explain with context](docs/media/explain.png) | ![Fix Grammar then Replace in place](docs/media/fix-grammar-replace.png) |
+| **Explain — uses the lines around your selection** | **Fix Grammar → ⤺ Replace in place** |
+| ![Translate to Persian](docs/media/translate-fa.png) | ![Page Intelligence summary](docs/media/page-intel.png) |
+| **Translate ⇄ — natural, right-to-left Persian** | **Page Intelligence — Summarize and Chat** |
+
+_The demo is recorded automatically from the real extension against a fake local AI — see [`demo/`](demo/README.md)._
 
 ---
 
@@ -248,6 +254,7 @@ npm run build          # Production build of both browsers (minified)
 npm run start:firefox  # Launch Firefox with the extension loaded
 npm run lint:firefox   # Mozilla's add-on linter
 npm run package        # Build + zip for the Chrome and Firefox stores → release/
+npm run demo           # Record the demo GIF/MP4 + screenshots → demo/out/
 npm run type-check     # TypeScript, no emit
 ```
 

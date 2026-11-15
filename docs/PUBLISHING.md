@@ -75,7 +75,8 @@ The email deliberately does not appear in the manifests, the extension UI, or th
   > Features: Translate ⇄ • Explain with surrounding context • Fix grammar • Formal / casual rewrite • Draft reply • Dictionary mode • Replace in place • Page summary and chat • Right-click menu and Alt+Shift+L shortcut • Stop / Regenerate • Vocabulary list with CSV export • Per-site "Hide here" • Full right-to-left (Persian) support
 
 - **Icon:** 128×128 PNG — `public/icons/icon128.png` (the store wants 96×96 artwork with 16 px transparent padding **(verify)**).
-- **Screenshots (1280×800, at least 1, up to 5):** `public/screenshots/text-actions.png`, `translate-tab.png`, `page-intel.png`, `casual.png`, `draft-reply.png`. They predate Replace, Hide here, and profiles — consider retaking some.
+- **Screenshots (1280×800, at least 1, up to 5):** use the generated stills in `docs/media/`: `explain.png`, `fix-grammar-replace.png`, `translate-fa.png`, `manual-translate.png`, `page-intel.png`. Regenerate them any time with `npm run demo`. (The older `public/screenshots/*.png` predate Replace, Hide here, and profiles.)
+- **Promo video (optional):** the store only takes static screenshots, but there is a separate field for a YouTube link **(verify)**. Upload `demo/out/demo.mp4` (~50 s, made by `npm run demo`) to YouTube and paste the link there. Put the same link in the README.
 - **Small promo tile (440×280, optional) and marquee (1400×560, optional):** not created yet.
 
 ### Privacy tab
@@ -109,7 +110,7 @@ Expect extra review attention for the broad host permission; the justification a
 - **Description:** same as the Chrome description above.
 - **Categories:** Language Support, Productivity **(verify)**
 - **License:** MIT · **Privacy policy:** the PRIVACY.md URL above · **Support:** `https://github.com/rezacloner1372/LinguaAssist/issues`
-- **Screenshots:** the same five PNGs.
+- **Screenshots:** the same five PNGs from `docs/media/`. Add the YouTube link to the description if links are allowed **(verify)** — the listing itself takes images only.
 
 ### Notes to reviewers (paste into the version page)
 
