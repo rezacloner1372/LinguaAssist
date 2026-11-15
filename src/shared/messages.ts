@@ -5,6 +5,7 @@ import type {
   MessageToBackgroundTtsSpeak,
   MessageToBackgroundTtsStop,
   MessageToBackgroundListModels,
+  MessageToBackgroundOpenOptions,
   MessageResponse,
   LLMRequest,
   LLMSettings,
@@ -35,6 +36,12 @@ export async function sendListModels(baseUrl: string, apiKey: string): Promise<s
   const response: MessageResponse = await chrome.runtime.sendMessage(message);
   if (!response.success) throw new Error(response.error ?? 'Could not load models.');
   return JSON.parse(response.data ?? '[]') as string[];
+}
+
+/** Open the settings page. Works from content scripts, where chrome.runtime.openOptionsPage is unavailable. */
+export function sendOpenOptions(): Promise<MessageResponse> {
+  const message: MessageToBackgroundOpenOptions = { type: 'OPEN_OPTIONS' };
+  return chrome.runtime.sendMessage(message);
 }
 
 export function sendTtsSpeak(payload: { text: string; lang?: string }): Promise<MessageResponse> {

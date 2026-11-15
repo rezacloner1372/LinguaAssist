@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import type { Action, SelectionContext, PageContent, ChatMessage, PanelState, VocabEntry, LLMSettings } from '../shared/types';
-import { streamLLMRequest, streamPageChat } from '../shared/messages';
+import { streamLLMRequest, streamPageChat, sendOpenOptions } from '../shared/messages';
 import { getSettings, saveVocabEntry } from '../shared/storage';
 import { isRTL, langPairLabel, isSingleWord } from '../shared/textDirection';
 import type { ReplaceTarget } from './replaceTarget';
@@ -1542,7 +1542,7 @@ function ErrorCard({ error, fontStack }: { error: string; fontStack: string }) {
       <div style={{ lineHeight: '1.5' }}>{error}</div>
       {error.includes('Settings') && (
         <button
-          onClick={() => chrome.runtime.openOptionsPage()}
+          onClick={() => { sendOpenOptions().catch(() => { /* worker unavailable */ }); }}
           style={{
             marginTop: '8px',
             background: '#5C6BC0',

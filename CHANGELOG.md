@@ -3,6 +3,16 @@
 All notable changes to LinguaAssist are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres to [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **"Open Settings →" in the panel did nothing.** Content scripts can't call `runtime.openOptionsPage`, so the panel's error card button never worked (on any browser). The panel now asks the background script to open Settings, which falls back to opening the page in a tab.
+
+### Changed
+
+- **Settings opens automatically on first install**, since nothing works until an endpoint is configured.
+
 ## [1.2.2] — 2026-11-15
 
 ### Added

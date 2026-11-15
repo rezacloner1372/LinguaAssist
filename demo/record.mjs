@@ -107,7 +107,10 @@ await worker.evaluate(
   },
 );
 
-const page = ctx.pages()[0] ?? (await ctx.newPage());
+// First install opens the Settings tab by itself — close it so it can't steal the recording page
+await sleep(1500);
+for (const p of ctx.pages()) if (p.url().endsWith('/settings.html')) await p.close();
+const page = ctx.pages().find((p) => p.url() === 'about:blank') ?? (await ctx.newPage());
 const t0 = Date.now(); // the video starts with the page
 const now = () => (Date.now() - t0) / 1000;
 await page.goto(mock.origin);

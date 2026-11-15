@@ -7,6 +7,7 @@ import type {
     MessageToBackgroundTtsSpeak,
     MessageToBackgroundTtsStop,
     MessageToBackgroundListModels,
+    MessageToBackgroundOpenOptions,
     MessageResponse,
     LLMSettings,
     Action,
@@ -25,7 +26,8 @@ type IncomingMessage =
     | MessageToBackgroundPageSummarize
     | MessageToBackgroundTtsSpeak
     | MessageToBackgroundTtsStop
-    | MessageToBackgroundListModels;
+    | MessageToBackgroundListModels
+    | MessageToBackgroundOpenOptions;
 
 const DEFAULT_MAX_CONTEXT_TOKENS = 8000;
 const SUMMARY_MAX_TOKENS = 1500;
@@ -449,6 +451,13 @@ chrome.runtime.onMessage.addListener(
             return true;
         }
 
+        if (message.type === 'OPEN_OPTIONS') {
+            openSettingsPage()
+                .then(() => sendResponse({ success: true }))
+                .catch((err) => sendResponse({ success: false, error: err instanceof Error ? err.message : String(err) }));
+            return true;
+        }
+
         if (message.type === 'LIST_MODELS') {
             listModels(message.payload.baseUrl, message.payload.apiKey)
                 .then((models) => sendResponse({ success: true, data: JSON.stringify(models) }))
@@ -553,6 +562,20 @@ const MENU_ACTIONS: { id: Action; title: string }[] = [
     { id: 'rewrite_casual', title: 'Rewrite — casual' },
     { id: 'reply_draft', title: 'Draft reply' },
 ];
+
+/** Open the options page; fall back to a plain tab if the browser refuses. */
+async function openSettingsPage(): Promise<void> {
+    try {
+        await chrome.runtime.openOptionsPage();
+    } catch {
+        await chrome.tabs.create({ url: chrome.runtime.getURL('settings.html') });
+    }
+}
+
+// First run: there is nothing to use until an endpoint is configured, so open Settings.
+chrome.runtime.onInstalled.addListener((details) => {
+    if (details.reason === 'install') void openSettingsPage();
+});
 
 function openPanelInTab(tabId: number | undefined, action?: Action, selectionText?: string): void {
     if (tabId === undefined) return;

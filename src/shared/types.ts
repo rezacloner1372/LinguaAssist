@@ -144,6 +144,11 @@ export interface MessageToBackgroundListModels {
   payload: { baseUrl: string; apiKey: string };
 }
 
+/** Content scripts can't call runtime.openOptionsPage, so they ask the worker to. */
+export interface MessageToBackgroundOpenOptions {
+  type: 'OPEN_OPTIONS';
+}
+
 export interface MessageToBackgroundTtsStop {
   type: 'TTS_STOP';
 }
