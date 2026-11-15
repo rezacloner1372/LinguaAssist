@@ -4,3 +4,7 @@ dist/
 .DS_Store
 release/
 demo/out/
+# Local tooling and generated output (kept on disk, never tracked)
+.claude/
+.idea/
+graphify-out/
