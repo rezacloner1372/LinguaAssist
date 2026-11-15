@@ -7,7 +7,7 @@
 Translate, explain, and rewrite selected text; summarize and chat with entire pages —
 powered by your own OpenAI-compatible LLM endpoint.
 
-[![Version](https://img.shields.io/badge/version-1.2.0-5C6BC0.svg)](https://github.com/rezacloner1372/LinguaAssist)
+[![Version](https://img.shields.io/badge/version-1.2.1-5C6BC0.svg)](https://github.com/rezacloner1372/LinguaAssist)
 [![Chrome](https://img.shields.io/badge/Chrome-114%2B-4285F4.svg)](https://developer.chrome.com/docs/extensions/develop)
 [![Firefox](https://img.shields.io/badge/Firefox-140%2B-FF7139.svg)](https://extensionworkshop.com/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
